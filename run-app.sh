@@ -37,12 +37,18 @@ else
   echo "OPENAI_API_KEY is not configured. Semantic vector sync will be disabled." >&2
 fi
 
+mkdir -p logs
+
 echo "Starting local services..."
-docker compose up -d postgres opensearch zookeeper kafka connect weaviate
+docker compose up -d postgres opensearch zookeeper kafka connect weaviate prometheus loki promtail tempo otel-collector grafana
 
 wait_for_http "OpenSearch" "http://localhost:9200/_cluster/health"
 wait_for_http "Kafka Connect" "http://localhost:8083/connectors"
 wait_for_http "Weaviate" "http://localhost:8085/v1/meta"
+wait_for_http "Prometheus" "http://localhost:9090/-/ready"
+wait_for_http "Grafana" "http://localhost:3000/api/health"
+wait_for_http "Loki" "http://localhost:3100/ready"
+wait_for_http "Tempo" "http://localhost:3200/ready"
 
 if curl -fsS "http://localhost:8083/connectors/${CONNECTOR_NAME}" >/dev/null 2>&1; then
   echo "Debezium connector ${CONNECTOR_NAME} already exists."

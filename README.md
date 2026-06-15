@@ -39,6 +39,8 @@ A Spring Boot WebFlux product search service with product CRUD, OpenSearch lexic
 - Weaviate
 - OpenAI embeddings API
 - Kafka, Zookeeper, Debezium Connect
+- Spring Actuator, Micrometer, OpenTelemetry
+- Prometheus, Grafana, Loki, Promtail, Tempo, OpenTelemetry Collector
 - Docker Compose
 
 ## Services And Ports
@@ -51,6 +53,11 @@ A Spring Boot WebFlux product search service with product CRUD, OpenSearch lexic
 | Kafka host listener | `9093` | App Kafka consumer connection |
 | Kafka Connect | `8083` | Debezium connector API |
 | Weaviate | `8085` | Vector database |
+| Prometheus | `9090` | Metrics storage and query |
+| Grafana | `3000` | Dashboards, logs, traces |
+| Loki | `3100` | Log storage |
+| Tempo | `3200` | Trace storage |
+| OpenTelemetry Collector | `4317`, `4318` | OTLP trace receiver |
 
 ## API Endpoints
 
@@ -199,6 +206,56 @@ Important environment variables:
 | `APP_KAFKA_TOPIC` | `dbserver1.public.products` | Debezium product topic |
 | `VECTORDB_URL` | `http://localhost:8085` | Weaviate URL |
 | `VECTORDB_TYPE` | `weaviate` | Vector database type |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `http://localhost:4318/v1/traces` | OpenTelemetry trace export endpoint |
+| `MANAGEMENT_TRACING_SAMPLING_PROBABILITY` | `1.0` | Trace sample rate for local development |
+| `LOG_FILE` | `logs/search-engine.log` | App log file tailed by Promtail |
+
+## Observability
+
+The local Docker Compose stack includes open-source observability tools:
+
+- Spring Actuator exposes health, metrics, and Prometheus endpoints.
+- Micrometer publishes JVM, HTTP, Reactor Netty, Kafka, and application metrics.
+- Prometheus scrapes `http://host.docker.internal:8082/actuator/prometheus`.
+- OpenTelemetry exports traces from the app to the collector.
+- The OpenTelemetry Collector forwards traces to Tempo.
+- Spring writes app logs to `logs/search-engine.log`.
+- Promtail ships that log file to Loki.
+- Grafana is provisioned with Prometheus, Loki, and Tempo datasources.
+
+Open the tools:
+
+| Tool | URL | Notes |
+| --- | --- | --- |
+| Grafana | `http://localhost:3000` | Login `admin` / `admin` |
+| Prometheus | `http://localhost:9090` | Metrics queries and scrape status |
+| Loki | `http://localhost:3100/ready` | Log backend readiness |
+| Tempo | `http://localhost:3200/ready` | Trace backend readiness |
+| Actuator Health | `http://localhost:8082/actuator/health` | App health |
+| Actuator Metrics | `http://localhost:8082/actuator/prometheus` | Prometheus scrape endpoint |
+
+Useful Grafana queries:
+
+Prometheus:
+
+```promql
+http_server_requests_seconds_count{application="search-engine"}
+jvm_memory_used_bytes{application="search-engine"}
+```
+
+Loki:
+
+```logql
+{job="search-engine"}
+```
+
+Generate traffic to see metrics, logs, and traces:
+
+```bash
+curl "http://localhost:8082/api/products?page=0&size=5"
+curl "http://localhost:8082/api/products/search?q=mobile&page=0&size=10"
+curl "http://localhost:8082/api/products/semantic-status"
+```
 
 ## CDC Flow
 
