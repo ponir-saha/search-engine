@@ -29,6 +29,10 @@ public class KafkaProductConsumer {
             JsonNode root = mapper.readTree(message);
 
             JsonNode product = extractProductNode(root);
+            if (product == null || product.isMissingNode() || product.isNull()) {
+                log.debug("Ignoring CDC event without product row payload.");
+                return;
+            }
 
             Long id = product.path("id").isMissingNode() ? null : product.path("id").asLong();
             String name = product.path("name").asText(null);
@@ -42,12 +46,10 @@ public class KafkaProductConsumer {
 
             ProductDto p = new ProductDto(id, name, description, price);
 
-            Mono<Void> indexProduct = productService.indexProduct(p).onErrorResume(e -> {
+            productService.indexProduct(p).onErrorResume(e -> {
                 log.error("Failed to index product", e);
                 return Mono.empty();
-            });
-
-            indexProduct.subscribe();
+            }).block();
 
         } catch (Exception e) {
             log.error("Failed to process Kafka message", e);

@@ -1,6 +1,5 @@
 package com.search.engine.service;
 
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import com.search.engine.client.openai.OpenAiClient;
 import com.search.engine.client.weaviate.WeaviateClient;
@@ -12,6 +11,8 @@ import com.search.engine.model.SemanticStatusResult;
 import com.search.engine.model.SuggestionResponse;
 import org.jspecify.annotations.NonNull;
 import com.search.engine.repository.ProductRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -21,15 +22,18 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class ProductService {
+
+	private static final Logger log = LoggerFactory.getLogger(ProductService.class);
 
 	private final ProductRepository repository;
 	private final WebClient webClient;
@@ -53,50 +57,45 @@ public class ProductService {
 		this.openAiClient = openAiClient;
 	}
 
-	public Mono<Void> seedDummyProducts(int count) {
-		// Use a list of meaningful product base names and suffixes to generate varied, realistic product
-		String[] bases = new String[] {
-			"Apple iPhone 15",
-			"Apple iPhone 14",
-			"Apple iPhone 13",
-			"Apple iPad Air",
-			"Apple iPad Pro",
-			"Samsung Galaxy S23",
-			"Samsung Galaxy S22",
-			"Samsung Galaxy A54",
-			"Google Pixel 8",
-			"Google Pixel 7",
-			"OnePlus 11",
-			"OnePlus 10",
-			"Sony Xperia 1",
-			"Xiaomi Redmi Note 12",
-			"Xiaomi Mi 12",
-			"Motorola Moto G Power",
-			"Nokia G50",
-			"Huawei P60",
-			"Lenovo Tab P11",
-			"Amazon Fire HD 10",
-			"Microsoft Surface Pro 9",
-			"Dell XPS 13",
-			"HP Spectre x360",
-			"Asus ROG Phone 7"
-		};
-		String[] variants = new String[] {"", "Pro", "Plus", "Max", "Mini", "SE", "Ultra"};
+	public Mono<Void> createProductTable() {
+		return repository.createTableIfNotExists();
+	}
 
+	public Mono<Void> saveProductOnly(ProductDto product) {
+		return repository.save(product);
+	}
+
+	public Mono<Void> resetProductStores() {
+		log.info("Resetting product table, OpenSearch index, and Weaviate class.");
 		return repository.createTableIfNotExists()
-				.thenMany(Flux.range(1, count)
-						.flatMap(i -> {
-							long id = i;
-							String base = bases[(i - 1) % bases.length];
-							String var = variants[(i - 1) % variants.length];
-							String name = base + (var.isEmpty() ? "" : " " + var) + " - Model " + ((i - 1) / bases.length + 1);
-							String desc = "Official description for " + name + ". High quality, great performance and features.";
-							double price = ThreadLocalRandom.current().nextDouble(49.0, 1999.0);
-							ProductDto p = new ProductDto(id, name, desc, Math.round(price * 100.0) / 100.0);
-							return repository.save(p)
-									.then(indexProduct(p));
-						}))
-					.then();
+				.then(repository.truncate())
+				.then(deleteOpenSearchIndex())
+				.then(weaviateClient.deleteClass("Product"));
+	}
+
+	public Mono<Void> waitForSearchStoreCounts(int expectedProducts, Duration timeout) {
+		Instant deadline = Instant.now().plus(timeout);
+		return waitForSearchStoreCounts(expectedProducts, deadline);
+	}
+
+	private Mono<Void> waitForSearchStoreCounts(int expectedProducts, Instant deadline) {
+		return Mono.zip(openSearchCount(), weaviateClient.count("Product"))
+				.flatMap(counts -> {
+					long openSearchProducts = counts.getT1();
+					long weaviateProducts = counts.getT2();
+					if (openSearchProducts >= expectedProducts && weaviateProducts >= expectedProducts) {
+						log.info("Search stores are ready. OpenSearch products={}, Weaviate products={}", openSearchProducts, weaviateProducts);
+						return Mono.empty();
+					}
+					if (Instant.now().isAfter(deadline)) {
+						return Mono.error(new IllegalStateException("Timed out waiting for search stores. OpenSearch products="
+								+ openSearchProducts + ", Weaviate products=" + weaviateProducts + ", expected=" + expectedProducts));
+					}
+					log.info("Waiting for CDC indexing. OpenSearch products={}, Weaviate products={}, expected={}",
+							openSearchProducts, weaviateProducts, expectedProducts);
+					return Mono.delay(Duration.ofSeconds(5))
+							.then(waitForSearchStoreCounts(expectedProducts, deadline));
+				});
 	}
 
 	public Mono<PageResponse<ProductDto>> search(String q, int page, int size) {
@@ -259,6 +258,29 @@ public class ProductService {
 				.retrieve()
 				.bodyToMono(Void.class)
 				.onErrorResume(e -> Mono.empty());
+	}
+
+	private Mono<Void> deleteOpenSearchIndex() {
+		return webClient.delete()
+				.uri("/" + productsIndex)
+				.retrieve()
+				.bodyToMono(Void.class)
+				.onErrorResume(e -> Mono.empty());
+	}
+
+	private Mono<Long> openSearchCount() {
+		return webClient.get()
+				.uri("/" + productsIndex + "/_count")
+				.retrieve()
+				.bodyToMono(String.class)
+				.map(body -> {
+					try {
+						return mapper.readTree(body).path("count").asLong(0);
+					} catch (Exception ignored) {
+						return 0L;
+					}
+				})
+				.onErrorReturn(0L);
 	}
 
 	public Mono<Void> reindexAll() {

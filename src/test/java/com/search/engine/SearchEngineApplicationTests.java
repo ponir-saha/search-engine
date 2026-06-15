@@ -3,7 +3,7 @@ package com.search.engine;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
+@SpringBootTest(properties = "app.bootstrap.enabled=false")
 class SearchEngineApplicationTests {
 
 	@Test

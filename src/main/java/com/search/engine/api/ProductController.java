@@ -21,11 +21,6 @@ public class ProductController {
 		this.service = service;
 	}
 
-	@PostMapping("/seed")
-	public Mono<Void> seed(@RequestParam(defaultValue = "300") int count) {
-		return service.seedDummyProducts(count);
-	}
-
 	@PostMapping("/reindex")
 	public Mono<ProductSyncResult> reindex() {
 		return service.syncProducts();

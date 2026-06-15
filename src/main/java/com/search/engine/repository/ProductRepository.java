@@ -20,6 +20,10 @@ public class ProductRepository {
 		return db.sql(ddl).then();
 	}
 
+	public Mono<Void> truncate() {
+		return db.sql("TRUNCATE TABLE products").then();
+	}
+
 	public Mono<Long> count() {
 		return db.sql("SELECT count(*) FROM products")
 				.map(row -> {

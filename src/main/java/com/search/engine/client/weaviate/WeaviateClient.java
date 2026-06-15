@@ -119,6 +119,14 @@ public class WeaviateClient {
                 .onErrorResume(e -> Mono.empty());
     }
 
+	public Mono<Void> deleteClass(String index) {
+		return client.delete()
+				.uri("/v1/schema/" + index)
+				.retrieve()
+				.bodyToMono(Void.class)
+				.onErrorResume(e -> Mono.empty());
+	}
+
     private String objectId(String index, String id) {
         return UUID.nameUUIDFromBytes((index + ":" + id).getBytes(StandardCharsets.UTF_8)).toString();
     }
