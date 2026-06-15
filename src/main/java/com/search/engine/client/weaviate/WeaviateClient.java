@@ -4,7 +4,6 @@ import com.search.engine.model.ProductDto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -30,29 +29,29 @@ public class WeaviateClient {
     }
 
     // Placeholder: create or upsert object
-	public Mono<Void> upsert(String index, String id, Map<@NonNull String, @NonNull Object> doc) {
+	public Mono<Void> upsert(String index, String id, Map< String,  Object> doc) {
 		return upsert(index, id, doc, List.of());
 	}
 
-	public Mono<Void> upsert(String index, String id, Map<@NonNull String, @NonNull Object> doc, List<@NonNull Float> vector) {
+	public Mono<Void> upsert(String index, String id, Map< String,  Object> doc, List< Float> vector) {
 		return upsertRequest(index, id, doc, vector)
 				.onErrorResume(e -> Mono.empty());
 	}
 
-	public Mono<Void> upsertStrict(String index, String id, Map<@NonNull String, @NonNull Object> doc, List<@NonNull Float> vector) {
+	public Mono<Void> upsertStrict(String index, String id, Map< String,  Object> doc, List< Float> vector) {
 		return upsertRequest(index, id, doc, vector);
 	}
 
-	private Mono<Void> upsertRequest(String index, String id, Map<@NonNull String, @NonNull Object> doc, List<@NonNull Float> vector) {
+	private Mono<Void> upsertRequest(String index, String id, Map< String,  Object> doc, List< Float> vector) {
 		// Weaviate create object: POST /v1/objects
 		// doc will be the properties map; index is mapped to class name in Weaviate.
-		Map<@NonNull String, @NonNull Object> properties = new HashMap<>(doc);
+		Map< String,  Object> properties = new HashMap<>(doc);
 		properties.put("productId", id);
 
-        Map<@NonNull String, @NonNull Object> body = new HashMap<>();
+        Map< String,  Object> body = new HashMap<>();
         body.put("class", index);
         body.put("properties", properties);
-        if (vector != null && !vector.isEmpty()) {
+        if (!vector.isEmpty()) {
             body.put("vector", vector);
         }
 
@@ -64,8 +63,8 @@ public class WeaviateClient {
 				.bodyToMono(Void.class);
 	}
 
-	public Flux<ProductDto> searchNearVector(String index, List<@NonNull Float> vector, int limit) {
-		if (vector == null || vector.isEmpty()) {
+	public Flux<ProductDto> searchNearVector(String index, List< Float> vector, int limit) {
+		if (vector.isEmpty()) {
 			return Flux.empty();
 		}
 
@@ -85,7 +84,7 @@ public class WeaviateClient {
                 }
                 """;
 
-        Map<@NonNull String, @NonNull Object> body = Map.of(
+        Map< String,  Object> body = Map.of(
                 "query", graphQl,
                 "variables", Map.of("vector", vector, "limit", Math.max(limit, 1))
         );
@@ -124,18 +123,16 @@ public class WeaviateClient {
         return UUID.nameUUIDFromBytes((index + ":" + id).getBytes(StandardCharsets.UTF_8)).toString();
     }
 
-	private List<@NonNull ProductDto> readProducts(ProductGraphQlResponse response) {
-		if (response.getData() == null || response.getData().getGet() == null) {
-			return List.of();
-		}
+	private List< ProductDto> readProducts(ProductGraphQlResponse response) {
 
-		List<@NonNull ProductDto> products = new ArrayList<>();
+        List< ProductDto> products = new ArrayList<>();
 		for (WeaviateProductRow row : response.getData().getGet().getProduct()) {
 			Long id = null;
-			if (row.getProductId() != null && !row.getProductId().isBlank()) {
+			if (!row.getProductId().isBlank()) {
 				id = Long.valueOf(row.getProductId());
 			}
-			products.add(new ProductDto(id, row.getName(), row.getDescription(), row.getPrice()));
+            assert id != null;
+            products.add(new ProductDto(id, row.getName(), row.getDescription(), row.getPrice()));
 		}
 		return products;
 	}
@@ -158,29 +155,15 @@ public class WeaviateClient {
 		@JsonProperty("Get")
 		private ProductGraphQlGet get;
 
-		public ProductGraphQlGet getGet() {
-			return get;
-		}
-
-		public void setGet(ProductGraphQlGet get) {
-			this.get = get;
-		}
-	}
+    }
 
 	@Data
 	@NoArgsConstructor
 	private static class ProductGraphQlGet {
 		@JsonProperty("Product")
-		private List<@NonNull WeaviateProductRow> product = new ArrayList<>();
+		private List< WeaviateProductRow> product = new ArrayList<>();
 
-		public List<@NonNull WeaviateProductRow> getProduct() {
-			return product;
-		}
-
-		public void setProduct(List<@NonNull WeaviateProductRow> product) {
-			this.product = product == null ? new ArrayList<>() : product;
-		}
-	}
+    }
 
 	@Data
 	@NoArgsConstructor

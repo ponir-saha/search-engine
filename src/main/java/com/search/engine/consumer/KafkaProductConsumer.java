@@ -18,11 +18,9 @@ public class KafkaProductConsumer {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final ProductService productService;
-    private final String topic;
 
     public KafkaProductConsumer(ProductService productService, @Value("${app.kafka.topic:dbserver1.public.products}") String topic) {
         this.productService = productService;
-        this.topic = topic;
     }
 
     @KafkaListener(topics = "${app.kafka.topic:dbserver1.public.products}", groupId = "search-engine-group")
@@ -31,10 +29,6 @@ public class KafkaProductConsumer {
             JsonNode root = mapper.readTree(message);
 
             JsonNode product = extractProductNode(root);
-            if (product == null) {
-                log.warn("No product payload found in message: {}", message);
-                return;
-            }
 
             Long id = product.path("id").isMissingNode() ? null : product.path("id").asLong();
             String name = product.path("name").asText(null);
@@ -84,6 +78,6 @@ public class KafkaProductConsumer {
     }
 
     private boolean hasProductId(JsonNode node) {
-        return node != null && !node.isMissingNode() && !node.isNull() && !node.path("id").isMissingNode();
+        return !node.isMissingNode() && !node.isNull() && !node.path("id").isMissingNode();
     }
 }

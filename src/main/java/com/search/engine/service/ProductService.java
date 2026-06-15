@@ -158,6 +158,7 @@ public class ProductService {
 				});
 	}
 
+
 	public Mono<PageResponse<ProductDto>> list(int page, int size) {
 		return repository.createTableIfNotExists()
 				.then(repository.count()

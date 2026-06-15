@@ -8,7 +8,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.jspecify.annotations.NonNull;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
@@ -27,11 +26,11 @@ public class OpenAiClient {
 	}
 
 	public boolean isConfigured() {
-		return apiKey != null && !apiKey.isBlank();
+		return !apiKey.isBlank();
 	}
 
 	// Minimal embedding call. If OPENAI API key is not provided, returns empty Mono.
-	public Mono<List<@NonNull Float>> embed(String text) {
+	public Mono<List<Float>> embed(String text) {
 		if (!isConfigured()) {
 			return Mono.just(new ArrayList<>());
 		}
@@ -53,15 +52,15 @@ public class OpenAiClient {
 				.bodyToMono(EmbeddingResponse.class)
 				.map(resp -> {
 					try {
-						if (resp.getData().isEmpty()) return new ArrayList<Float>();
+						if (resp.getData().isEmpty()) return new ArrayList<>();
 						var embedding = resp.getData().getFirst().getEmbedding();
-						List<@NonNull Float> out = new ArrayList<>();
-						for (Object o : embedding) {
-							if (o instanceof Number) out.add(((Number) o).floatValue());
+						List<Float> out = new ArrayList<>();
+						for (Number o : embedding) {
+                            out.add(o.floatValue());
                         }
                         return out;
 					} catch (Exception e) {
-						return new ArrayList<Float>();
+						return new ArrayList<>();
 					}
 				});
 	}
@@ -69,12 +68,12 @@ public class OpenAiClient {
 	@Data
 	@NoArgsConstructor
 	private static class EmbeddingResponse {
-		private List<@NonNull EmbeddingData> data = new ArrayList<>();
+		private List<EmbeddingData> data = new ArrayList<>();
 	}
 
 	@Data
 	@NoArgsConstructor
 	private static class EmbeddingData {
-		private List<@NonNull Double> embedding = new ArrayList<>();
+		private List<Double> embedding = new ArrayList<>();
 	}
 }
