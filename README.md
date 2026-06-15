@@ -14,7 +14,7 @@ A Spring Boot WebFlux product search service with product CRUD, OpenSearch lexic
 - Semantic vector search through Weaviate
 - OpenAI `text-embedding-3-small` embeddings
 - Startup bootstrap from `src/main/resources/data/products.tsv`
-- Automatic reset and loading of 3000 product records on app startup
+- Automatic loading of 3000 product records only when the products table is empty
 - Debezium Postgres CDC connector
 - Kafka consumer that indexes product changes into OpenSearch and Weaviate
 - One-command local runner through `./run-app.sh`
@@ -92,7 +92,7 @@ Product JSON:
 - `POST /api/products/reindex`
 - `GET /api/products/semantic-status`
 
-On startup, the app reads `src/main/resources/data/products.tsv`, clears previous product/search/vector data, inserts 3000 products into Postgres, and waits for CDC indexing to populate OpenSearch and Weaviate.
+On startup, the app creates the `products` table if needed and checks whether it already has rows. If the table is empty, it reads `src/main/resources/data/products.tsv`, inserts 3000 products into Postgres, and waits for CDC indexing to populate OpenSearch and Weaviate. If products already exist, startup leaves the table untouched and skips the dataset load.
 
 `/api/products/sync` and `/api/products/reindex` are still available as repair endpoints, but normal local startup does not require calling them manually.
 
@@ -141,12 +141,11 @@ The script starts Docker services, waits for OpenSearch/Kafka Connect/Weaviate/o
 
 During Spring Boot startup, the application automatically:
 
-1. Loads 3000 products from `src/main/resources/data/products.tsv`.
-2. Truncates the existing Postgres `products` table.
-3. Clears the OpenSearch `products` index.
-4. Clears the Weaviate `Product` class.
-5. Inserts the fresh product dataset into Postgres.
-6. Waits until CDC/Kafka indexing catches OpenSearch and Weaviate up to the expected product count.
+1. Creates the Postgres `products` table if it does not exist.
+2. Checks how many products already exist.
+3. Skips dataset loading when existing products are found.
+4. Loads 3000 products from `src/main/resources/data/products.tsv` only when the table is empty.
+5. Waits until CDC/Kafka indexing catches OpenSearch and Weaviate up to the expected product count after a first-time load.
 
 If port `8082` is already in use, stop the old Java process shown by the script and run it again.
 
@@ -187,7 +186,6 @@ Important environment variables:
 | `OPENSEARCH_INDEX_PRODUCTS` | `products` | Product index name |
 | `APP_KAFKA_TOPIC` | `dbserver1.public.products` | Debezium product topic |
 | `APP_BOOTSTRAP_ENABLED` | `true` | Run startup product dataset bootstrap |
-| `APP_BOOTSTRAP_RESET` | `true` | Clear old Postgres/OpenSearch/Weaviate product data before inserting |
 | `APP_BOOTSTRAP_DATASET` | `classpath:data/products.tsv` | Product dataset location |
 | `APP_BOOTSTRAP_WAIT_FOR_INDEXES` | `true` | Wait for CDC indexing counts before startup finishes |
 | `APP_BOOTSTRAP_WAIT_TIMEOUT` | `PT15M` | Max time to wait for OpenSearch/Weaviate counts |

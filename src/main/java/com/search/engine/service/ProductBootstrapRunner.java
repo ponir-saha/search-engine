@@ -20,7 +20,6 @@ public class ProductBootstrapRunner implements ApplicationRunner {
 	private static final Logger log = LoggerFactory.getLogger(ProductBootstrapRunner.class);
 
 	private final boolean enabled;
-	private final boolean reset;
 	private final boolean waitForIndexes;
 	private final Duration waitTimeout;
 	private final Resource dataset;
@@ -28,14 +27,12 @@ public class ProductBootstrapRunner implements ApplicationRunner {
 	private final ProductService productService;
 
 	public ProductBootstrapRunner(@Value("${app.bootstrap.enabled:true}") boolean enabled,
-								  @Value("${app.bootstrap.reset:true}") boolean reset,
 								  @Value("${app.bootstrap.wait-for-indexes:true}") boolean waitForIndexes,
 								  @Value("${app.bootstrap.wait-timeout:PT15M}") Duration waitTimeout,
 								  @Value("${app.bootstrap.dataset:classpath:data/products.tsv}") Resource dataset,
 								  ProductDatasetLoader datasetLoader,
 								  ProductService productService) {
 		this.enabled = enabled;
-		this.reset = reset;
 		this.waitForIndexes = waitForIndexes;
 		this.waitTimeout = waitTimeout;
 		this.dataset = dataset;
@@ -54,14 +51,19 @@ public class ProductBootstrapRunner implements ApplicationRunner {
 	}
 
 	private Mono<Void> bootstrap() {
-		return datasetLoader.load(dataset)
-				.flatMap(products -> {
-					log.info("Starting product bootstrap with {} products from {}", products.size(), dataset.getDescription());
-					Mono<Void> resetStep = reset ? productService.resetProductStores() : Mono.empty();
-					return resetStep
-							.then(insertProducts(products))
-							.then(waitForIndexes(products.size()))
-							.doOnSuccess(ignored -> log.info("Product bootstrap completed for {} products.", products.size()));
+		return productService.countProducts()
+				.flatMap(existingProducts -> {
+					if (existingProducts > 0) {
+						log.info("Skipping product bootstrap because products table already has {} rows.", existingProducts);
+						return Mono.empty();
+					}
+					return datasetLoader.load(dataset)
+							.flatMap(products -> {
+								log.info("Products table is empty. Loading {} products from {}", products.size(), dataset.getDescription());
+								return insertProducts(products)
+										.then(waitForIndexes(products.size()))
+										.doOnSuccess(ignored -> log.info("Product bootstrap completed for {} products.", products.size()));
+							});
 				});
 	}
 

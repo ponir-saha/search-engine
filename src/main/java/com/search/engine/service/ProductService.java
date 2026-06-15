@@ -61,6 +61,11 @@ public class ProductService {
 		return repository.createTableIfNotExists();
 	}
 
+	public Mono<Long> countProducts() {
+		return repository.createTableIfNotExists()
+				.then(repository.count());
+	}
+
 	public Mono<Void> saveProductOnly(ProductDto product) {
 		return repository.save(product);
 	}

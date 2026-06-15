@@ -22,7 +22,6 @@ app:
     topic: ${APP_KAFKA_TOPIC:dbserver1.public.products}
   bootstrap:
     enabled: ${APP_BOOTSTRAP_ENABLED:true}
-    reset: ${APP_BOOTSTRAP_RESET:true}
     dataset: ${APP_BOOTSTRAP_DATASET:classpath:data/products.tsv}
     wait-for-indexes: ${APP_BOOTSTRAP_WAIT_FOR_INDEXES:true}
     wait-timeout: ${APP_BOOTSTRAP_WAIT_TIMEOUT:PT15M}
