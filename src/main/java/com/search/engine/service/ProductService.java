@@ -8,6 +8,7 @@ import com.search.engine.model.PageResponse;
 import com.search.engine.model.ProductDto;
 import com.search.engine.model.ProductSuggestion;
 import com.search.engine.model.ProductSyncResult;
+import com.search.engine.model.SemanticStatusResult;
 import com.search.engine.model.SuggestionResponse;
 import com.search.engine.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -320,17 +321,15 @@ public class ProductService {
 				});
 	}
 
-	public Mono<Map<String, Object>> semanticStatus() {
+	public Mono<SemanticStatusResult> semanticStatus() {
 		return embeddingDimensions().zipWith(weaviateClient.count("Product"))
-				.map(tuple -> {
-					Map<String, Object> status = new LinkedHashMap<>();
-					status.put("openAiConfigured", openAiClient.isConfigured());
-					status.put("embeddingDimensions", tuple.getT1());
-					status.put("openAiEmbeddingsWorking", tuple.getT1() > 0);
-					status.put("weaviateProductObjects", tuple.getT2());
-					status.put("semanticSearchReady", tuple.getT1() > 0 && tuple.getT2() > 0);
-					return status;
-				});
+				.map(tuple -> new SemanticStatusResult(
+						openAiClient.isConfigured(),
+						tuple.getT1(),
+						tuple.getT1() > 0,
+						tuple.getT2(),
+						tuple.getT1() > 0 && tuple.getT2() > 0
+				));
 	}
 
 	private Mono<Integer> embeddingDimensions() {

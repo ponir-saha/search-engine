@@ -3,14 +3,13 @@ package com.search.engine.api;
 import com.search.engine.model.PageResponse;
 import com.search.engine.model.ProductDto;
 import com.search.engine.model.ProductSyncResult;
+import com.search.engine.model.SemanticStatusResult;
 import com.search.engine.model.SuggestionResponse;
 import com.search.engine.service.ProductService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
-
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/products")
@@ -38,7 +37,7 @@ public class ProductController {
 	}
 
 	@GetMapping(value = "/semantic-status", produces = MediaType.APPLICATION_JSON_VALUE)
-	public Mono<Map<String, Object>> semanticStatus() {
+	public Mono<SemanticStatusResult> semanticStatus() {
 		return service.semanticStatus();
 	}
 
