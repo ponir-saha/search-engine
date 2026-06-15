@@ -1,0 +1,8 @@
+The following files have been resolved:
+   org.springframework.boot:spring-boot-starter-webflux:jar:4.1.0:compile -- module spring.boot.starter.webflux [auto]
+   org.springframework.boot:spring-boot-starter-data-r2dbc:jar:4.1.0:compile -- module spring.boot.starter.data.r2dbc [auto]
+   io.r2dbc:r2dbc-postgresql:jar:0.8.13.RELEASE:compile -- module r2dbc.postgresql [auto]
+   org.springframework.boot:spring-boot-starter-validation:jar:4.1.0:compile -- module spring.boot.starter.validation [auto]
+   org.projectlombok:lombok:jar:1.18.46:compile (optional) -- module lombok
+   org.springframework.kafka:spring-kafka:jar:4.1.0:compile -- module spring.kafka [auto]
+

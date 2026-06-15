@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: search-engine
+  r2dbc:
+    url: ${R2DBC_URL:r2dbc:postgresql://localhost:5432/products_db}
+    username: ${POSTGRES_USER:pguser}
+    password: ${POSTGRES_PASSWORD:pgpass}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+
+opensearch:
+  url: ${OPENSEARCH_URL:http://localhost:9200}
+
+openai:
+  api-key: ${OPENAI_API_KEY:}
+
+app:
+  products:
+    index: ${OPENSEARCH_INDEX_PRODUCTS:products}
+  kafka:
+    topic: ${APP_KAFKA_TOPIC:dbserver1.public.products}
+
+vectordb:
+  url: ${VECTORDB_URL:http://localhost:8085}
+  type: ${VECTORDB_TYPE:weaviate}
+
+server:
+  port: 8082
