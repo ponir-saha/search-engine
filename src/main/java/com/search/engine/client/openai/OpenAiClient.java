@@ -6,6 +6,9 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.jspecify.annotations.NonNull;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
@@ -28,7 +31,7 @@ public class OpenAiClient {
 	}
 
 	// Minimal embedding call. If OPENAI API key is not provided, returns empty Mono.
-	public Mono<List<Float>> embed(String text) {
+	public Mono<List<@NonNull Float>> embed(String text) {
 		if (!isConfigured()) {
 			return Mono.just(new ArrayList<>());
 		}
@@ -47,21 +50,31 @@ public class OpenAiClient {
 				.onStatus(HttpStatusCode::isError, response -> response.bodyToMono(String.class)
 						.defaultIfEmpty("OpenAI embeddings request failed")
 						.flatMap(body -> Mono.error(new IllegalStateException(body))))
-				.bodyToMono(Map.class)
+				.bodyToMono(EmbeddingResponse.class)
 				.map(resp -> {
 					try {
-						var data = (List<?>) resp.get("data");
-						if (data == null || data.isEmpty()) return new ArrayList<Float>();
-                        var first = (Map<?, ?>) data.get(0);
-                        var embedding = (List<?>) first.get("embedding");
-                        List<Float> out = new ArrayList<>();
-                        for (Object o : embedding) {
-                            if (o instanceof Number) out.add(((Number) o).floatValue());
+						if (resp.getData().isEmpty()) return new ArrayList<Float>();
+						var embedding = resp.getData().getFirst().getEmbedding();
+						List<@NonNull Float> out = new ArrayList<>();
+						for (Object o : embedding) {
+							if (o instanceof Number) out.add(((Number) o).floatValue());
                         }
                         return out;
 					} catch (Exception e) {
 						return new ArrayList<Float>();
 					}
 				});
+	}
+
+	@Data
+	@NoArgsConstructor
+	private static class EmbeddingResponse {
+		private List<@NonNull EmbeddingData> data = new ArrayList<>();
+	}
+
+	@Data
+	@NoArgsConstructor
+	private static class EmbeddingData {
+		private List<@NonNull Double> embedding = new ArrayList<>();
 	}
 }

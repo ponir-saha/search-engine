@@ -3,7 +3,9 @@ package com.search.engine.model;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.NonNull;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -18,5 +20,5 @@ public class ProductSyncResult {
 	private boolean openAiConfigured;
 	private int embeddingDimensions;
 	private boolean openAiEmbeddingsWorking;
-	private List<String> errors;
+	private List<@NonNull String> errors = new ArrayList<>();
 }

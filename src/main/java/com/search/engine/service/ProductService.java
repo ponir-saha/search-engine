@@ -10,6 +10,7 @@ import com.search.engine.model.ProductSuggestion;
 import com.search.engine.model.ProductSyncResult;
 import com.search.engine.model.SemanticStatusResult;
 import com.search.engine.model.SuggestionResponse;
+import org.jspecify.annotations.NonNull;
 import com.search.engine.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -108,17 +109,17 @@ public class ProductService {
 		int from = page * size;
 		String expandedQuery = expandQuery(q);
 		// Build a combined fuzzy + prefix query to improve typo tolerance and prefix matching.
-		Map<String, Object> multiMatch = new HashMap<>();
+		Map<@NonNull String, @NonNull Object> multiMatch = new HashMap<>();
 		multiMatch.put("query", expandedQuery);
 		multiMatch.put("fields", List.of("name^3", "description"));
 		multiMatch.put("type", "best_fields");
 		multiMatch.put("fuzziness", "AUTO");
 
-		Map<String, Object> matchPhrasePrefix = Map.of(
+		Map<@NonNull String, @NonNull Object> matchPhrasePrefix = Map.of(
 				"match_phrase_prefix", Map.of("name", Map.of("query", q, "boost", 2.0))
 		);
 
-		Map<String, Object> bool = new HashMap<>();
+		Map<@NonNull String, @NonNull Object> bool = new HashMap<>();
 		bool.put("should", List.of(
 				Map.of("multi_match", multiMatch),
 				matchPhrasePrefix,
@@ -126,7 +127,7 @@ public class ProductService {
 		));
 		bool.put("minimum_should_match", 1);
 
-		Map<String, Object> query = new HashMap<>();
+		Map<@NonNull String, @NonNull Object> query = new HashMap<>();
 		query.put("query", Map.of("bool", bool));
 		query.put("from", from);
 		query.put("size", size);
@@ -230,22 +231,17 @@ public class ProductService {
 	}
 
 	public Mono<Void> indexProduct(ProductDto product) {
-		Map<String, Object> props = new HashMap<>();
-		props.put("name", product.getName());
-		props.put("description", product.getDescription());
-		props.put("price", product.getPrice());
-
 		return upsertToOpenSearch(product)
 				.then(openAiClient.embed(productText(product)))
-				.flatMap(vector -> weaviateClient.upsert("Product", String.valueOf(product.getId()), props, vector));
+				.flatMap(vector -> weaviateClient.upsert("Product", String.valueOf(product.getId()), productProperties(product), vector));
 	}
 
 	public Mono<Void> upsertToOpenSearch(ProductDto p) {
-		Map<String, Object> body = new HashMap<>();
+		Map<@NonNull String, @NonNull Object> body = new HashMap<>();
 		body.put("id", p.getId());
-		body.put("name", p.getName());
-		body.put("description", p.getDescription());
-		body.put("price", p.getPrice());
+		body.put("name", safeText(p.getName()));
+		body.put("description", safeText(p.getDescription()));
+		body.put("price", safePrice(p.getPrice()));
 
 		return webClient.put()
 				.uri("/" + productsIndex + "/_doc/" + p.getId() + "?refresh=true")
@@ -342,19 +338,30 @@ public class ProductService {
 	}
 
 	private Mono<Void> syncProductToSearchStores(ProductDto product) {
-		Map<String, Object> props = new HashMap<>();
-		props.put("name", product.getName());
-		props.put("description", product.getDescription());
-		props.put("price", product.getPrice());
-
 		return upsertToOpenSearch(product)
 				.then(openAiClient.embed(productText(product)))
 				.flatMap(vector -> {
 					if (vector.isEmpty()) {
 						return Mono.error(new IllegalStateException("OpenAI returned an empty embedding vector"));
 					}
-					return weaviateClient.upsertStrict("Product", String.valueOf(product.getId()), props, vector);
+					return weaviateClient.upsertStrict("Product", String.valueOf(product.getId()), productProperties(product), vector);
 				});
+	}
+
+	private Map<@NonNull String, @NonNull Object> productProperties(ProductDto product) {
+		Map<@NonNull String, @NonNull Object> props = new HashMap<>();
+		props.put("name", safeText(product.getName()));
+		props.put("description", safeText(product.getDescription()));
+		props.put("price", safePrice(product.getPrice()));
+		return props;
+	}
+
+	private String safeText(String value) {
+		return value == null ? "" : value;
+	}
+
+	private Double safePrice(Double value) {
+		return value == null ? 0.0 : value;
 	}
 
 	private String syncError(ProductDto product, Throwable error) {
