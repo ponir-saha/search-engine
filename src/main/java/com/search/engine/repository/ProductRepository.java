@@ -106,7 +106,8 @@ public class ProductRepository {
 						.bind(0, id)
 						.execute())
 						.flatMap(result -> Mono.from(result.getRowsUpdated()))
-							.map(rows -> rows > 0));
+						.map(Number::longValue)
+						.map(rows -> rows > 0));
 	}
 
 	private ProductDto toProduct(io.r2dbc.spi.Row row) {
