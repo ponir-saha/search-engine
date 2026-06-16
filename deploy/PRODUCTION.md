@@ -29,7 +29,8 @@ APP_KAFKA_DLQ_TOPIC=dbserver1.public.products.dlq
 OPENSEARCH_URL=https://<opensearch-host>
 VECTORDB_URL=https://<weaviate-host>
 OPENAI_API_KEY=<secret>
-OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://<otel-collector>:4318/v1/traces
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://<otel-collector>:4317
+OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 ```
 
 ## Database

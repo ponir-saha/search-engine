@@ -56,6 +56,9 @@ fi
 
 mkdir -p logs
 
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://localhost:4317}"
+export OTEL_EXPORTER_OTLP_PROTOCOL="${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}"
+
 echo "Starting local services..."
 docker compose up -d postgres opensearch zookeeper kafka connect weaviate prometheus loki promtail tempo otel-collector grafana
 

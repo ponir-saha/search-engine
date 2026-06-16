@@ -235,7 +235,8 @@ Important environment variables:
 | `APP_BOOTSTRAP_WAIT_TIMEOUT` | `PT15M` | Max time to wait for OpenSearch/Weaviate counts |
 | `VECTORDB_URL` | `http://localhost:8085` | Weaviate URL |
 | `VECTORDB_TYPE` | `weaviate` | Vector database type |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `http://localhost:4318/v1/traces` | OpenTelemetry trace export endpoint |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `http://localhost:4317` | OpenTelemetry trace export endpoint. The local app uses OTLP gRPC. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | OTLP protocol for local trace export |
 | `MANAGEMENT_TRACING_SAMPLING_PROBABILITY` | `1.0` | Trace sample rate for local development |
 | `LOG_FILE` | `logs/search-engine.log` | App log file tailed by Promtail |
 
@@ -297,6 +298,8 @@ curl "http://localhost:8082/api/products?page=0&size=5"
 curl "http://localhost:8082/api/products/search?q=mobile&page=0&size=10"
 curl "http://localhost:8082/api/products/semantic-status"
 ```
+
+If you see `415 Unsupported Media Type` from `http://localhost:4318/v1/traces`, the app is sending OTLP gRPC traffic to the OTLP HTTP endpoint. Use the local default `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4317`, or set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` when intentionally sending to `4318/v1/traces`.
 
 ## CDC Flow
 
