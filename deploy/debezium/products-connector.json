@@ -1,13 +1,14 @@
 {
   "name": "products-connector",
   "config": {
-    "connector.class": "io.debezium.connector.postgres.PostgresConnector",
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
     "database.hostname": "postgres",
     "database.port": "5432",
     "database.user": "pguser",
     "database.password": "pgpass",
     "database.dbname": "products_db",
     "database.server.name": "dbserver1",
+    "topic.prefix": "dbserver1",
     "plugin.name": "pgoutput",
     "slot.name": "debezium_slot",
     "publication.autocreate.mode": "filtered",
@@ -16,4 +17,3 @@
     "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState"
   }
 }
-
