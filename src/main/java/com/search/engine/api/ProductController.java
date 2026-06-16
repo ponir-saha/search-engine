@@ -1,5 +1,7 @@
 package com.search.engine.api;
 
+import com.search.engine.model.AiFeedbackRequest;
+import com.search.engine.model.AiFeedbackResponse;
 import com.search.engine.model.PageResponse;
 import com.search.engine.model.ProductDto;
 import com.search.engine.model.ProductSyncResult;
@@ -41,6 +43,11 @@ public class ProductController {
 	public Mono<SuggestionResponse> suggestions(@RequestParam String q,
 												@RequestParam(defaultValue = "5") int size) {
 		return service.suggestions(q, size);
+	}
+
+	@PostMapping(value = "/ai/feedback", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+	public Mono<AiFeedbackResponse> aiFeedback(@Valid @RequestBody AiFeedbackRequest feedback) {
+		return service.recordAiFeedback(feedback);
 	}
 
 	@GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)

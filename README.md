@@ -10,7 +10,7 @@ This project demonstrates the kind of backend/search engineering expected in rem
 - Ecommerce intent handling: queries like `lap`, `type-c`, and `mobile charger` map to relevant product categories.
 - CDC indexing pipeline: Postgres changes stream through Debezium and Kafka into OpenSearch and Weaviate.
 - Production-minded runtime: Flyway migrations, Spring profiles, Docker non-root image, Kafka retry/DLQ.
-- Observability stack: Prometheus, Grafana, Loki, Tempo, Promtail, and OpenTelemetry.
+- Observability stack: Prometheus, Grafana, Loki, Tempo, Promtail, OpenTelemetry, and AI-specific search quality metrics.
 - One-command local demo for reviewers and hiring teams.
 
 ## Architecture
@@ -53,6 +53,7 @@ See [PORTFOLIO.md](PORTFOLIO.md) for the engineering story, tradeoffs, and resum
 - Kafka retry and dead-letter topic support for failed indexing events
 - Debezium Postgres CDC connector
 - Kafka consumer that indexes product changes into OpenSearch and Weaviate
+- AI observability for OpenAI token usage, model latency, retrieval quality, groundedness, hallucination proxy, and user feedback
 - One-command local runner through `./run-app.sh`
 
 ## Use Cases
@@ -121,7 +122,29 @@ Product JSON:
 ### Search And Suggestions
 
 - `GET /api/products/search?q=mobile&page=0&size=10`
+- `GET /api/products/search/opensearch?q=mobile&page=0&size=10`
+- `GET /api/products/search/ai?q=mobile&page=0&size=10`
 - `GET /api/products/suggestions?q=mobile&size=5`
+
+### AI Feedback
+
+- `POST /api/products/ai/feedback`
+
+Feedback JSON:
+
+```json
+{
+  "query": "shoe",
+  "mode": "ai",
+  "productId": 3001,
+  "relevant": true,
+  "grounded": true,
+  "rating": 5,
+  "comment": "Returned the Nike runner product I expected."
+}
+```
+
+Feedback is recorded as metrics and trace attributes. It is intended for search-quality monitoring, not long-term review storage.
 
 ### Bootstrap And Sync
 
@@ -288,6 +311,13 @@ Prometheus:
 up{job="search-engine"}
 sum(rate(http_server_requests_seconds_count{job="search-engine"}[1m]))
 sum(jvm_memory_used_bytes{job="search-engine"}) by (area)
+sum(rate(ai_openai_tokens_total{type="total"}[1m])) * 60
+histogram_quantile(0.95, sum(rate(ai_openai_latency_seconds_bucket[5m])) by (le, model, operation))
+histogram_quantile(0.95, sum(rate(ai_search_latency_seconds_bucket[5m])) by (le, mode))
+avg(rate(ai_retrieval_groundedness_score_sum[5m]) / rate(ai_retrieval_groundedness_score_count[5m]))
+avg(rate(ai_hallucination_rate_sum[5m]) / rate(ai_hallucination_rate_count[5m]))
+avg(rate(ai_answer_quality_score_sum[5m]) / rate(ai_answer_quality_score_count[5m]))
+avg(rate(ai_feedback_rating_sum[5m]) / rate(ai_feedback_rating_count[5m]))
 ```
 
 Loki:
@@ -307,8 +337,25 @@ Generate traffic to see metrics, logs, and traces:
 ```bash
 curl "http://127.0.0.1:8082/api/products?page=0&size=5"
 curl "http://127.0.0.1:8082/api/products/search?q=mobile&page=0&size=10"
+curl "http://127.0.0.1:8082/api/products/search/ai?q=shoe&page=0&size=5"
+curl "http://127.0.0.1:8082/api/products/suggestions?q=shoe&size=5"
 curl "http://127.0.0.1:8082/api/products/semantic-status"
+curl -X POST "http://127.0.0.1:8082/api/products/ai/feedback" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"shoe","mode":"ai","productId":3001,"relevant":true,"grounded":true,"rating":5}'
 ```
+
+AI-specific dashboard panels are included in `Search Engine Overview`:
+
+- OpenAI token consumption per minute
+- OpenAI embedding latency p95
+- AI search latency p95
+- AI search request rate
+- Retrieval groundedness score
+- Query coverage score
+- Hallucination proxy rate
+- Composite answer quality score
+- User feedback rating
 
 If you see `415 Unsupported Media Type` from `http://127.0.0.1:4318/v1/traces`, the app is sending OTLP gRPC traffic to the OTLP HTTP endpoint. Use the local default `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4317`, or set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` when intentionally sending to `4318/v1/traces`.
 

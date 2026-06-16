@@ -54,16 +54,23 @@ public class SearchIntentCatalog {
 		List<String> aliases = new ArrayList<>();
 		for (Map.Entry<String, List<String>> entry : SEARCH_INTENTS.entrySet()) {
 			String key = normalizeSearchText(entry.getKey());
-			boolean productMatchesKey = normalized.contains(key);
+			boolean productMatchesKey = phrasePresent(normalized, key);
 			boolean productMatchesAlias = entry.getValue().stream()
 					.map(this::normalizeSearchText)
-					.anyMatch(normalized::contains);
+					.anyMatch(alias -> phrasePresent(normalized, alias));
 			if (productMatchesKey || productMatchesAlias) {
 				aliases.add(entry.getKey());
 				aliases.addAll(entry.getValue());
 			}
 		}
 		return String.join(" ", aliases.stream().distinct().toList());
+	}
+
+	public boolean productMatchesQueryIntent(String query, String productText) {
+		String normalizedProduct = normalizeSearchText(productText + " " + productAliases(productText));
+		return expandedTerms(query).stream()
+				.map(this::normalizeSearchText)
+				.anyMatch(term -> phrasePresent(normalizedProduct, term));
 	}
 
 	private List<String> expandedTerms(String query) {
@@ -96,6 +103,25 @@ public class SearchIntentCatalog {
 				.trim();
 	}
 
+	private boolean phrasePresent(String text, String phrase) {
+		String normalizedText = normalizeSearchText(text);
+		String normalizedPhrase = normalizeSearchText(phrase);
+		if (normalizedText.isBlank() || normalizedPhrase.isBlank()) {
+			return false;
+		}
+		List<String> textTokens = List.of(normalizedText.split(" "));
+		List<String> phraseTokens = List.of(normalizedPhrase.split(" "));
+		if (phraseTokens.size() > textTokens.size()) {
+			return false;
+		}
+		for (int i = 0; i <= textTokens.size() - phraseTokens.size(); i++) {
+			if (textTokens.subList(i, i + phraseTokens.size()).equals(phraseTokens)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static Map<String, List<String>> searchIntents() {
 		Map<String, List<String>> intents = new LinkedHashMap<>();
 		intents.put("lap", List.of("laptop", "notebook", "ultrabook", "macbook", "gaming laptop"));
@@ -115,13 +141,12 @@ public class SearchIntentCatalog {
 		intents.put("tablet", List.of("ipad", "tab", "fire hd", "surface pro"));
 		intents.put("earphone", List.of("earbuds", "airpods", "galaxy buds", "headphones"));
 		intents.put("headset", List.of("headphones", "earbuds", "airpods", "noise cancelling"));
-		intents.put("shoe", List.of("shoes for men", "shoes for running", "running shoe", "sneaker", "trainer", "runner", "running", "footwear"));
-		intents.put("shoes", List.of("shoes for men", "shoes for running", "running shoe", "sneaker", "trainer", "runner", "running", "footwear"));
-		intents.put("running shoe", List.of("shoe", "shoes for running", "runner", "running", "sneaker", "trainer", "footwear"));
+		intents.put("shoe", List.of("shoes for men", "shoes for running", "running shoe", "sneaker", "trainer", "runner", "footwear"));
+		intents.put("shoes", List.of("shoes for men", "shoes for running", "running shoe", "sneaker", "trainer", "runner", "footwear"));
+		intents.put("running shoe", List.of("shoe", "shoes for running", "runner", "sneaker", "trainer", "footwear"));
 		intents.put("sneaker", List.of("shoe", "shoes", "running shoe", "trainer", "runner", "footwear"));
 		intents.put("trainer", List.of("shoe", "shoes", "sneaker", "running shoe", "runner", "footwear"));
 		intents.put("runner", List.of("shoe", "shoes", "running shoe", "shoes for running", "sneaker", "trainer", "footwear"));
-		intents.put("running", List.of("shoe", "shoes", "running shoe", "shoes for running", "runner", "sneaker", "trainer", "footwear"));
 		intents.put("footwear", List.of("shoe", "shoes", "sneaker", "trainer", "running shoe", "runner"));
 		intents.put("wifi", List.of("router", "mesh router", "wi-fi 6", "networking"));
 		intents.put("watch", List.of("smartwatch", "fitness tracker", "apple watch", "galaxy watch", "garmin", "fitbit"));

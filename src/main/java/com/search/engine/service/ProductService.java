@@ -3,6 +3,8 @@ package com.search.engine.service;
 import tools.jackson.databind.ObjectMapper;
 import com.search.engine.client.openai.OpenAiClient;
 import com.search.engine.client.weaviate.WeaviateClient;
+import com.search.engine.model.AiFeedbackRequest;
+import com.search.engine.model.AiFeedbackResponse;
 import com.search.engine.model.PageResponse;
 import com.search.engine.model.ProductDto;
 import com.search.engine.model.ProductSuggestion;
@@ -43,6 +45,7 @@ public class ProductService {
 	private final WeaviateClient weaviateClient;
 	private final OpenAiClient openAiClient;
 	private final SearchIntentCatalog searchIntentCatalog;
+	private final AiObservabilityService aiObservabilityService;
 	private final ObjectMapper mapper = new ObjectMapper();
 
 	public ProductService(ProductRepository repository,
@@ -51,7 +54,8 @@ public class ProductService {
 						  @Value("${app.products.index:products}") String productsIndex,
 						  WeaviateClient weaviateClient,
 						  OpenAiClient openAiClient,
-						  SearchIntentCatalog searchIntentCatalog) {
+						  SearchIntentCatalog searchIntentCatalog,
+						  AiObservabilityService aiObservabilityService) {
 		this.repository = repository;
 		this.webClient = webClientBuilder.baseUrl(opensearchUrl).build();
 		this.opensearchUrl = opensearchUrl;
@@ -59,6 +63,7 @@ public class ProductService {
 		this.weaviateClient = weaviateClient;
 		this.openAiClient = openAiClient;
 		this.searchIntentCatalog = searchIntentCatalog;
+		this.aiObservabilityService = aiObservabilityService;
 	}
 
 	public Mono<Void> createProductTable() {
@@ -108,9 +113,13 @@ public class ProductService {
 	}
 
 	public Mono<PageResponse<ProductDto>> search(String q, int page, int size) {
+		Instant startedAt = Instant.now();
+		String expandedQuery = expandQuery(q);
 		return lexicalSearch(q, page, size)
 				.zipWith(semanticProducts(q, size).collectList())
-				.map(tuple -> mergeSearchResults(tuple.getT1(), tuple.getT2(), page, size));
+				.map(tuple -> mergeSearchResults(tuple.getT1(), tuple.getT2(), page, size))
+				.doOnSuccess(response -> recordAiSearch("hybrid", q, expandedQuery, response, startedAt, null))
+				.doOnError(error -> recordAiSearch("hybrid", q, expandedQuery, null, startedAt, error));
 	}
 
 	public Mono<PageResponse<ProductDto>> searchOpenSearch(String q, int page, int size) {
@@ -118,12 +127,18 @@ public class ProductService {
 	}
 
 	public Mono<PageResponse<ProductDto>> searchAi(String q, int page, int size) {
+		Instant startedAt = Instant.now();
+		String expandedQuery = expandQuery(q);
 		if (page > 0) {
-			return Mono.just(new PageResponse<>(List.of(), page, size, 0));
+			PageResponse<ProductDto> response = new PageResponse<>(List.of(), page, size, 0);
+			recordAiSearch("ai", q, expandedQuery, response, startedAt, null);
+			return Mono.just(response);
 		}
 		return semanticProducts(q, size)
 				.collectList()
-				.map(products -> new PageResponse<>(products, page, size, products.size()));
+				.map(products -> new PageResponse<>(products, page, size, products.size()))
+				.doOnSuccess(response -> recordAiSearch("ai", q, expandedQuery, response, startedAt, null))
+				.doOnError(error -> recordAiSearch("ai", q, expandedQuery, null, startedAt, error));
 	}
 
 	private Mono<PageResponse<ProductDto>> lexicalSearch(String q, int page, int size) {
@@ -188,9 +203,10 @@ public class ProductService {
 	}
 
 	public Mono<SuggestionResponse> suggestions(String q, int size) {
+		Instant startedAt = Instant.now();
 		int max = Math.max(1, Math.min(size, 5));
-		List<ProductSuggestion> intents = searchIntentCatalog.intentSuggestions(q, 2);
-		int prefixLimit = Math.max(1, max - intents.size());
+		List<ProductSuggestion> intents = searchIntentCatalog.intentSuggestions(q, Math.min(4, max));
+		int prefixLimit = Math.max(0, max - intents.size());
 		return prefixSuggestions(q, prefixLimit)
 				.zipWith(semanticSuggestions(q, max).collectList())
 				.map(tuple -> {
@@ -205,7 +221,14 @@ public class ProductService {
 						merged.putIfAbsent(suggestionKey(suggestion), suggestion);
 					}
 					return new SuggestionResponse(q, merged.values().stream().limit(max).toList());
-				});
+				})
+				.doOnSuccess(response -> recordSuggestions(q, response, startedAt, null))
+				.doOnError(error -> recordSuggestions(q, null, startedAt, error));
+	}
+
+	public Mono<AiFeedbackResponse> recordAiFeedback(AiFeedbackRequest feedback) {
+		aiObservabilityService.recordFeedback(feedback);
+		return Mono.just(new AiFeedbackResponse("accepted", "AI feedback recorded for observability."));
 	}
 
 	public Mono<ProductDto> get(Long id) {
@@ -477,6 +500,9 @@ public class ProductService {
 	}
 
 	private Mono<List<ProductSuggestion>> prefixSuggestions(String q, int size) {
+		if (size <= 0) {
+			return Mono.just(List.of());
+		}
 		return lexicalSearch(q, 0, size)
 				.map(page -> page.getItems().stream()
 						.map(product -> new ProductSuggestion("PREFIX", product.getId(), product.getName()))
@@ -491,9 +517,36 @@ public class ProductService {
 	}
 
 	private Flux<ProductDto> semanticProducts(String q, int size) {
+		int retrievalLimit = Math.max(size * 5, 20);
 		return openAiClient.embed(expandQuery(q))
-				.flatMapMany(vector -> weaviateClient.searchNearVector("Product", vector, size))
+				.flatMapMany(vector -> weaviateClient.searchNearVector("Product", vector, retrievalLimit))
+				.filter(product -> searchIntentCatalog.productMatchesQueryIntent(q, productText(product)))
+				.take(size)
 				.onErrorResume(e -> Flux.empty());
+	}
+
+	private void recordAiSearch(String mode,
+								String query,
+								String expandedQuery,
+								PageResponse<ProductDto> response,
+								Instant startedAt,
+								Throwable error) {
+		if (aiObservabilityService == null) {
+			return;
+		}
+		List<ProductDto> products = response == null ? List.of() : response.getItems();
+		aiObservabilityService.recordSearch(mode, query, expandedQuery, products, Duration.between(startedAt, Instant.now()), error);
+	}
+
+	private void recordSuggestions(String query,
+								   SuggestionResponse response,
+								   Instant startedAt,
+								   Throwable error) {
+		if (aiObservabilityService == null) {
+			return;
+		}
+		List<ProductSuggestion> suggestions = response == null ? List.of() : response.getSuggestions();
+		aiObservabilityService.recordSuggestions(query, suggestions, Duration.between(startedAt, Instant.now()), error);
 	}
 
 	private PageResponse<ProductDto> mergeSearchResults(PageResponse<ProductDto> lexical,

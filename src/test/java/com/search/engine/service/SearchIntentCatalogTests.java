@@ -58,11 +58,11 @@ class SearchIntentCatalogTests {
 
 	@Test
 	void suggestsShoeIntentBeforeProductLookup() {
-		List<ProductSuggestion> suggestions = catalog.intentSuggestions("shoe", 2);
+		List<ProductSuggestion> suggestions = catalog.intentSuggestions("shoe", 4);
 
 		assertThat(suggestions)
 				.extracting(ProductSuggestion::getText)
-				.containsExactly("shoes for men", "shoes for running");
+				.containsExactly("shoes for men", "shoes for running", "running shoe", "sneaker");
 		assertThat(suggestions)
 				.extracting(ProductSuggestion::getType)
 				.containsOnly("AI");
@@ -75,5 +75,17 @@ class SearchIntentCatalogTests {
 				.contains("shoes for running")
 				.contains("sneaker")
 				.contains("footwear");
+		assertThat(catalog.productMatchesQueryIntent("shoe", "Nike runner shoe for daily running and comfort"))
+				.isTrue();
+	}
+
+	@Test
+	void doesNotTreatRunningWatchesAsShoeProducts() {
+		assertThat(catalog.productAliases("Garmin Forerunner running smartwatch with AMOLED display"))
+				.doesNotContain("shoe")
+				.doesNotContain("sneaker")
+				.doesNotContain("footwear");
+		assertThat(catalog.productMatchesQueryIntent("shoe", "Garmin Forerunner running smartwatch with AMOLED display"))
+				.isFalse();
 	}
 }
