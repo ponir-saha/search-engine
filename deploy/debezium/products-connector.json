@@ -14,6 +14,7 @@
     "publication.autocreate.mode": "filtered",
     "table.include.list": "public.products",
     "transforms": "unwrap",
-    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState"
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.delete.handling.mode": "rewrite"
   }
 }

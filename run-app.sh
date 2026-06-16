@@ -4,6 +4,7 @@ set -euo pipefail
 APP_PORT="${APP_PORT:-8082}"
 CONNECTOR_NAME="products-connector"
 CONNECTOR_FILE="deploy/debezium/products-connector.json"
+CONNECTOR_CONFIG_FILE="deploy/debezium/products-connector-config.json"
 LOCAL_HTTP_HOSTS="${LOCAL_HTTP_HOSTS:-127.0.0.1 localhost 0.0.0.0}"
 KAFKA_CONNECT_BASE_URL="${KAFKA_CONNECT_BASE_URL:-}"
 READY_HTTP_BASE=""
@@ -79,7 +80,12 @@ register_connector() {
   fi
 
   if curl -fsS "${KAFKA_CONNECT_BASE_URL}/connectors/${CONNECTOR_NAME}/status" >/dev/null 2>&1; then
-    echo "Debezium connector ${CONNECTOR_NAME} already exists."
+    echo "Debezium connector ${CONNECTOR_NAME} already exists. Updating config..."
+    curl -fsS -X PUT \
+      -H "Content-Type: application/json" \
+      --data @"${CONNECTOR_CONFIG_FILE}" \
+      "${KAFKA_CONNECT_BASE_URL}/connectors/${CONNECTOR_NAME}/config"
+    echo
     curl -fsS "${KAFKA_CONNECT_BASE_URL}/connectors/${CONNECTOR_NAME}/status"
     echo
     return 0

@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -112,11 +113,16 @@ public class WeaviateClient {
 	}
 
 	public Mono<Void> delete(String index, String id) {
+		return deleteStrict(index, id)
+                .onErrorResume(e -> Mono.empty());
+    }
+
+	public Mono<Void> deleteStrict(String index, String id) {
 		return client.delete()
 				.uri("/v1/objects/" + index + "/" + objectId(index, id))
                 .retrieve()
                 .bodyToMono(Void.class)
-                .onErrorResume(e -> Mono.empty());
+				.onErrorResume(WebClientResponseException.NotFound.class, e -> Mono.empty());
     }
 
 	public Mono<Void> deleteClass(String index) {

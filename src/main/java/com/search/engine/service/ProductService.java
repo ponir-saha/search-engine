@@ -19,6 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -257,12 +258,22 @@ public class ProductService {
 	}
 
 	public Mono<Void> indexProduct(ProductDto product) {
-		return upsertToOpenSearch(product)
+		return indexProductStrict(product)
+				.onErrorResume(e -> Mono.empty());
+	}
+
+	public Mono<Void> indexProductStrict(ProductDto product) {
+		return upsertToOpenSearchStrict(product)
 				.then(openAiClient.embed(productText(product)))
-				.flatMap(vector -> weaviateClient.upsert("Product", String.valueOf(product.getId()), productProperties(product), vector));
+				.flatMap(vector -> upsertProductVectorStrict(product, vector));
 	}
 
 	public Mono<Void> upsertToOpenSearch(ProductDto p) {
+		return upsertToOpenSearchStrict(p)
+				.onErrorResume(e -> Mono.empty());
+	}
+
+	public Mono<Void> upsertToOpenSearchStrict(ProductDto p) {
 		Map<@NonNull String, @NonNull Object> body = new HashMap<>();
 		body.put("id", p.getId());
 		body.put("name", safeText(p.getName()));
@@ -275,16 +286,25 @@ public class ProductService {
 				.contentType(MediaType.APPLICATION_JSON)
 				.bodyValue(body)
 				.retrieve()
-				.bodyToMono(Void.class)
-				.onErrorResume(e -> Mono.empty());
+				.bodyToMono(Void.class);
 	}
 
 	public Mono<Void> deleteFromOpenSearch(Long id) {
+		return deleteFromOpenSearchStrict(id)
+				.onErrorResume(e -> Mono.empty());
+	}
+
+	public Mono<Void> deleteProductFromSearchStoresStrict(Long id) {
+		return deleteFromOpenSearchStrict(id)
+				.then(weaviateClient.deleteStrict("Product", String.valueOf(id)));
+	}
+
+	private Mono<Void> deleteFromOpenSearchStrict(Long id) {
 		return webClient.delete()
 				.uri("/" + productsIndex + "/_doc/" + id + "?refresh=true")
 				.retrieve()
 				.bodyToMono(Void.class)
-				.onErrorResume(e -> Mono.empty());
+				.onErrorResume(WebClientResponseException.NotFound.class, e -> Mono.empty());
 	}
 
 	private Mono<Void> deleteOpenSearchIndex() {
@@ -394,14 +414,16 @@ public class ProductService {
 	}
 
 	private Mono<Void> syncProductToSearchStores(ProductDto product) {
-		return upsertToOpenSearch(product)
+		return upsertToOpenSearchStrict(product)
 				.then(openAiClient.embed(productText(product)))
-				.flatMap(vector -> {
-					if (vector.isEmpty()) {
-						return Mono.error(new IllegalStateException("OpenAI returned an empty embedding vector"));
-					}
-					return weaviateClient.upsertStrict("Product", String.valueOf(product.getId()), productProperties(product), vector);
-				});
+				.flatMap(vector -> upsertProductVectorStrict(product, vector));
+	}
+
+	private Mono<Void> upsertProductVectorStrict(ProductDto product, List<Float> vector) {
+		if (vector.isEmpty()) {
+			return Mono.error(new IllegalStateException("OpenAI returned an empty embedding vector"));
+		}
+		return weaviateClient.upsertStrict("Product", String.valueOf(product.getId()), productProperties(product), vector);
 	}
 
 	private Map<@NonNull String, @NonNull Object> productProperties(ProductDto product) {

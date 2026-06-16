@@ -24,6 +24,11 @@ public class KafkaProductConsumer {
     @KafkaListener(topics = "${app.kafka.topic:dbserver1.public.products}", groupId = "${app.kafka.group-id:search-engine-group}")
     public void handle(String message) {
         try {
+            if (message == null || message.isBlank()) {
+                log.debug("Ignoring empty CDC tombstone event.");
+                return;
+            }
+
             JsonNode root = mapper.readTree(message);
 
             JsonNode product = extractProductNode(root);
@@ -42,9 +47,16 @@ public class KafkaProductConsumer {
                 return;
             }
 
+            if (isDeleteEvent(root, product)) {
+                productService.deleteProductFromSearchStoresStrict(id).block();
+                log.info("Deleted product {} from search stores from CDC event.", id);
+                return;
+            }
+
             ProductDto p = new ProductDto(id, name, description, price);
 
-            productService.indexProduct(p).block();
+            productService.indexProductStrict(p).block();
+            log.info("Indexed product {} in search stores from CDC event.", id);
 
         } catch (Exception e) {
             log.error("Failed to process Kafka message", e);
@@ -58,6 +70,11 @@ public class KafkaProductConsumer {
             return payloadAfter;
         }
 
+        JsonNode payloadBefore = root.path("payload").path("before");
+        if (hasProductId(payloadBefore)) {
+            return payloadBefore;
+        }
+
         JsonNode payload = root.path("payload");
         if (hasProductId(payload)) {
             return payload;
@@ -68,11 +85,33 @@ public class KafkaProductConsumer {
             return after;
         }
 
+        JsonNode before = root.path("before");
+        if (hasProductId(before)) {
+            return before;
+        }
+
         if (hasProductId(root)) {
             return root;
         }
 
         return null;
+    }
+
+    private boolean isDeleteEvent(JsonNode root, JsonNode product) {
+        return isDeletedFlag(product.path("__deleted"))
+                || isDeletedFlag(root.path("__deleted"))
+                || "d".equals(root.path("op").asText(null))
+                || "d".equals(root.path("payload").path("op").asText(null));
+    }
+
+    private boolean isDeletedFlag(JsonNode deleted) {
+        if (deleted.isMissingNode() || deleted.isNull()) {
+            return false;
+        }
+        if (deleted.isBoolean()) {
+            return deleted.asBoolean();
+        }
+        return "true".equalsIgnoreCase(deleted.asText(""));
     }
 
     private boolean hasProductId(JsonNode node) {
