@@ -263,14 +263,17 @@ The local Docker Compose stack includes open-source observability tools:
 - The OpenTelemetry Collector forwards traces to Tempo.
 - Spring writes app logs to `logs/search-engine.log`.
 - Promtail ships that log file to Loki.
-- Grafana is provisioned with Prometheus, Loki, and Tempo datasources.
+- Grafana is provisioned with Prometheus, Loki, Tempo, and a `Search Engine Overview` dashboard.
+
+Grafana is the main UI for observability. Prometheus, Loki, Tempo, and the OTLP collector are backend services; some of their root URLs may return readiness text, API JSON, `404`, or no browser-friendly page.
 
 Open the tools:
 
 | Tool | URL | Notes |
 | --- | --- | --- |
-| Grafana | `http://127.0.0.1:3000` | Login `admin` / `admin` |
-| Prometheus | `http://127.0.0.1:9090` | Metrics queries and scrape status |
+| Grafana | `http://127.0.0.1:3000` | Login `admin` / `admin`; open Dashboards -> Search Engine -> Search Engine Overview |
+| Search Dashboard | `http://127.0.0.1:3000/d/search-engine-overview/search-engine-overview` | Metrics, logs, and traces in one place |
+| Prometheus | `http://127.0.0.1:9090` | Metrics backend. Use Grafana for the UI when this URL is not reachable from Docker Desktop |
 | Loki | `http://127.0.0.1:3100/ready` | Log backend readiness. Use Grafana for the log UI. |
 | Tempo | `http://127.0.0.1:3200/ready` | Trace backend readiness. Use Grafana for the trace UI. |
 | OTLP HTTP receiver | `http://127.0.0.1:4318` | Ingest API only; a `404` at `/` is normal. |
@@ -282,14 +285,21 @@ Useful Grafana queries:
 Prometheus:
 
 ```promql
-http_server_requests_seconds_count{application="search-engine"}
-jvm_memory_used_bytes{application="search-engine"}
+up{job="search-engine"}
+sum(rate(http_server_requests_seconds_count{job="search-engine"}[1m]))
+sum(jvm_memory_used_bytes{job="search-engine"}) by (area)
 ```
 
 Loki:
 
 ```logql
 {job="search-engine"}
+```
+
+Tempo:
+
+```text
+Search service name: search-engine
 ```
 
 Generate traffic to see metrics, logs, and traces:
