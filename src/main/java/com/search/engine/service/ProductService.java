@@ -341,11 +341,12 @@ public class ProductService {
 								));
 					}
 
-					return repository.findAll()
+					return resetSearchStores()
+							.thenMany(repository.findAll()
 							.flatMapSequential(product -> syncProductToSearchStores(product)
 									.thenReturn("")
 									.onErrorResume(error -> Mono.just(syncError(product, error))), 4)
-							.filter(error -> !error.isBlank())
+							.filter(error -> !error.isBlank()))
 							.collectList()
 							.zipWith(weaviateClient.count("Product"))
 							.map(done -> {
@@ -365,6 +366,11 @@ public class ProductService {
 								);
 							});
 				});
+	}
+
+	private Mono<Void> resetSearchStores() {
+		return deleteOpenSearchIndex()
+				.then(weaviateClient.deleteClass("Product"));
 	}
 
 	public Mono<SemanticStatusResult> semanticStatus() {

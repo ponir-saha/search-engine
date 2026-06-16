@@ -70,7 +70,7 @@ class SearchIntentCatalogTests {
 
 	@Test
 	void enrichesRunnerProductsWithShoeAliases() {
-		assertThat(catalog.productAliases("Nike runner for daily running and comfort"))
+		assertThat(catalog.productAliases("Runner shoe for daily running and comfort"))
 				.contains("shoe")
 				.contains("shoes for running")
 				.contains("sneaker")
