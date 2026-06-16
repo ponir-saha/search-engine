@@ -105,9 +105,10 @@ public class ProductRepository {
 				Mono.from(connection.createStatement("DELETE FROM products WHERE id = $1")
 						.bind(0, id)
 						.execute())
-						.flatMap(result -> Mono.from(result.getRowsUpdated()))
+						.flatMapMany(result -> Flux.from(result.getRowsUpdated()))
+						.cast(Number.class)
 						.map(Number::longValue)
-						.map(rows -> rows > 0));
+						.any(rows -> rows > 0));
 	}
 
 	private ProductDto toProduct(io.r2dbc.spi.Row row) {

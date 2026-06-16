@@ -17,12 +17,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class WeaviateClient {
 
     private final WebClient client;
+	private final Set<String> ensuredClasses = ConcurrentHashMap.newKeySet();
 
     public WeaviateClient(WebClient.Builder builder,
                           @Value("${vectordb.url:http://localhost:8085}") String vectordbUrl) {
@@ -50,18 +53,54 @@ public class WeaviateClient {
 		properties.put("productId", id);
 
         Map< String,  Object> body = new HashMap<>();
+		body.put("id", objectId(index, id));
         body.put("class", index);
         body.put("properties", properties);
         if (!vector.isEmpty()) {
             body.put("vector", vector);
         }
 
-		return client.put()
-				.uri("/v1/objects/" + index + "/" + objectId(index, id))
+		return ensureProductClass(index)
+				.then(deleteStrict(index, id))
+				.then(client.post()
+						.uri("/v1/objects")
+						.contentType(MediaType.APPLICATION_JSON)
+						.bodyValue(body)
+						.retrieve()
+						.bodyToMono(Void.class));
+	}
+
+	public Mono<Void> ensureProductClass(String index) {
+		if (ensuredClasses.contains(index)) {
+			return Mono.empty();
+		}
+
+		Map< String,  Object> body = Map.of(
+				"class", index,
+				"vectorizer", "none",
+				"properties", List.of(
+						Map.of("name", "productId", "dataType", List.of("text")),
+						Map.of("name", "name", "dataType", List.of("text")),
+						Map.of("name", "description", "dataType", List.of("text")),
+						Map.of("name", "searchText", "dataType", List.of("text")),
+						Map.of("name", "price", "dataType", List.of("number"))
+				)
+		);
+
+		return client.post()
+				.uri("/v1/schema")
 				.contentType(MediaType.APPLICATION_JSON)
 				.bodyValue(body)
 				.retrieve()
-				.bodyToMono(Void.class);
+				.bodyToMono(Void.class)
+				.onErrorResume(WebClientResponseException.class, e -> {
+					int status = e.getStatusCode().value();
+					if (status == 409 || status == 422) {
+						return Mono.empty();
+					}
+					return Mono.error(e);
+				})
+				.doOnSuccess(ignored -> ensuredClasses.add(index));
 	}
 
 	public Flux<ProductDto> searchNearVector(String index, List< Float> vector, int limit) {
@@ -69,12 +108,13 @@ public class WeaviateClient {
 			return Flux.empty();
 		}
 
+		int safeLimit = Math.max(limit, 1);
         String graphQl = """
-                query Search($vector: [Float]!, $limit: Int!) {
+                query Search($vector: [Float]!) {
                   Get {
                     Product(
                       nearVector: {vector: $vector}
-                      limit: $limit
+                      limit: %d
                     ) {
                       productId
                       name
@@ -83,11 +123,11 @@ public class WeaviateClient {
                     }
                   }
                 }
-                """;
+                """.formatted(safeLimit);
 
         Map< String,  Object> body = Map.of(
                 "query", graphQl,
-                "variables", Map.of("vector", vector, "limit", Math.max(limit, 1))
+                "variables", Map.of("vector", vector)
         );
 
 		return client.post()
@@ -101,14 +141,25 @@ public class WeaviateClient {
 	}
 
 	public Mono<Long> count(String index) {
-		return client.get()
-				.uri(uriBuilder -> uriBuilder.path("/v1/objects")
-						.queryParam("class", index)
-						.queryParam("limit", 1)
-						.build())
+		String graphQl = """
+				query CountProducts {
+				  Aggregate {
+				    Product {
+				      meta {
+				        count
+				      }
+				    }
+				  }
+				}
+				""";
+
+		return client.post()
+				.uri("/v1/graphql")
+				.contentType(MediaType.APPLICATION_JSON)
+				.bodyValue(Map.of("query", graphQl))
 				.retrieve()
-				.bodyToMono(ObjectListResponse.class)
-				.map(ObjectListResponse::getTotalResults)
+				.bodyToMono(ProductAggregateGraphQlResponse.class)
+				.map(this::readProductCount)
 				.onErrorReturn(0L);
 	}
 
@@ -126,6 +177,7 @@ public class WeaviateClient {
     }
 
 	public Mono<Void> deleteClass(String index) {
+		ensuredClasses.remove(index);
 		return client.delete()
 				.uri("/v1/schema/" + index)
 				.retrieve()
@@ -140,21 +192,31 @@ public class WeaviateClient {
 	private List< ProductDto> readProducts(ProductGraphQlResponse response) {
 
         List< ProductDto> products = new ArrayList<>();
+		if (response == null || response.getData() == null || response.getData().getGet() == null) {
+			return products;
+		}
 		for (WeaviateProductRow row : response.getData().getGet().getProduct()) {
-			Long id = null;
-			if (!row.getProductId().isBlank()) {
-				id = Long.valueOf(row.getProductId());
+			if (row == null || row.getProductId() == null || row.getProductId().isBlank()) {
+				continue;
 			}
+			Long id = null;
+			id = Long.valueOf(row.getProductId());
             assert id != null;
             products.add(new ProductDto(id, row.getName(), row.getDescription(), row.getPrice()));
 		}
 		return products;
 	}
 
-	@Data
-	@NoArgsConstructor
-	private static class ObjectListResponse {
-		private long totalResults;
+	private long readProductCount(ProductAggregateGraphQlResponse response) {
+		try {
+			List<ProductAggregateRow> rows = response.getData().getAggregate().getProduct();
+			if (rows.isEmpty()) {
+				return 0L;
+			}
+			return rows.getFirst().getMeta().getCount();
+		} catch (Exception e) {
+			return 0L;
+		}
 	}
 
 	@Data
@@ -170,6 +232,38 @@ public class WeaviateClient {
 		private ProductGraphQlGet get;
 
     }
+
+	@Data
+	@NoArgsConstructor
+	private static class ProductAggregateGraphQlResponse {
+		private ProductAggregateGraphQlData data;
+	}
+
+	@Data
+	@NoArgsConstructor
+	private static class ProductAggregateGraphQlData {
+		@JsonProperty("Aggregate")
+		private ProductAggregateGraphQlAggregate aggregate;
+	}
+
+	@Data
+	@NoArgsConstructor
+	private static class ProductAggregateGraphQlAggregate {
+		@JsonProperty("Product")
+		private List<ProductAggregateRow> product = new ArrayList<>();
+	}
+
+	@Data
+	@NoArgsConstructor
+	private static class ProductAggregateRow {
+		private ProductAggregateMeta meta = new ProductAggregateMeta();
+	}
+
+	@Data
+	@NoArgsConstructor
+	private static class ProductAggregateMeta {
+		private long count;
+	}
 
 	@Data
 	@NoArgsConstructor
