@@ -1,6 +1,39 @@
-# Search Engine
+# AI Commerce Search Platform
 
-A Spring Boot WebFlux product search service with product CRUD, OpenSearch lexical search, Weaviate vector search, OpenAI embeddings, and Debezium/Kafka CDC indexing.
+Portfolio-grade ecommerce search platform built with Spring Boot WebFlux, OpenSearch lexical search, Weaviate vector search, OpenAI embeddings, and Debezium/Kafka CDC indexing.
+
+This project demonstrates the kind of backend/search engineering expected in remote platform roles: source-of-truth data in Postgres, near-real-time CDC indexing, hybrid keyword + semantic search, production runtime hardening, and full local observability.
+
+## Portfolio Highlights
+
+- Hybrid search: OpenSearch keyword/fuzzy matching plus OpenAI-powered vector search.
+- Ecommerce intent handling: queries like `lap`, `type-c`, and `mobile charger` map to relevant product categories.
+- CDC indexing pipeline: Postgres changes stream through Debezium and Kafka into OpenSearch and Weaviate.
+- Production-minded runtime: Flyway migrations, Spring profiles, Docker non-root image, Kafka retry/DLQ.
+- Observability stack: Prometheus, Grafana, Loki, Tempo, Promtail, and OpenTelemetry.
+- One-command local demo for reviewers and hiring teams.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI["Static Search + CRUD UI"] --> API["Spring Boot WebFlux API"]
+    API --> PG["Postgres Source of Truth"]
+    API --> OS["OpenSearch Lexical Index"]
+    API --> OA["OpenAI Embeddings"]
+    OA --> WV["Weaviate Vector DB"]
+    PG --> DBZ["Debezium Connect"]
+    DBZ --> KF["Kafka Product Topic"]
+    KF --> CON["Spring Kafka Indexer"]
+    CON --> OS
+    CON --> OA
+    CON --> WV
+    API --> OBS["Actuator / Prometheus / Traces / Logs"]
+```
+
+## Case Study
+
+See [PORTFOLIO.md](PORTFOLIO.md) for the engineering story, tradeoffs, and resume-ready talking points.
 
 ## Current Features
 

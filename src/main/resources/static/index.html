@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Product Search</title>
+  <title>AI Commerce Search Platform</title>
   <style>
     :root {
       color-scheme: light;
@@ -213,6 +213,50 @@
       transform: none;
     }
 
+    .demo-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .sample-query {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--accent-dark);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      padding: 8px 12px;
+    }
+
+    .sample-query:hover {
+      border-color: var(--accent);
+      background: #f4fbf9;
+    }
+
+    .system-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .system-badge {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.78);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      padding: 7px 10px;
+      text-transform: uppercase;
+    }
+
     .meta-row {
       display: flex;
       justify-content: space-between;
@@ -346,8 +390,14 @@
   <main class="shell">
     <header class="topbar">
       <div class="brand">
-        <h1>Product Search</h1>
-        <p class="subtitle">Find indexed products from the local search API.</p>
+        <h1>AI Commerce Search</h1>
+        <p class="subtitle">OpenSearch keyword relevance plus OpenAI/Weaviate semantic product discovery.</p>
+        <div class="system-badges" aria-label="Search architecture">
+          <span class="system-badge">OpenSearch</span>
+          <span class="system-badge">AI Semantic</span>
+          <span class="system-badge">Kafka CDC</span>
+          <span class="system-badge">Observability</span>
+        </div>
       </div>
       <a class="nav-link" href="/products.html">Manage Products</a>
       <div class="status-pill" id="status">Ready</div>
@@ -365,6 +415,13 @@
       <button class="search-button" id="searchButton" type="submit">Search</button>
       <button class="secondary-button" id="randomButton" type="button">Random 10</button>
     </form>
+    <div class="demo-strip" aria-label="Demo searches">
+      <span>Try:</span>
+      <button class="sample-query" type="button" data-query="lap">lap</button>
+      <button class="sample-query" type="button" data-query="type-c">type-c</button>
+      <button class="sample-query" type="button" data-query="mobile charger">mobile charger</button>
+      <button class="sample-query" type="button" data-query="wireless earbuds">wireless earbuds</button>
+    </div>
     <div class="suggestions" id="suggestions" role="listbox" aria-label="Product suggestions"></div>
 
     <section class="meta-row" aria-live="polite">
@@ -389,7 +446,7 @@
     const API_BASE_URL = window.location.protocol === "file:"
       ? "http://localhost:8082"
       : window.location.origin;
-    const starterQueries = ["phone", "apple", "samsung", "pixel", "laptop", "tablet", "pro", "max"];
+    const starterQueries = ["phone", "apple", "samsung", "pixel", "laptop", "tablet", "type-c", "mobile charger"];
     let activeController = null;
     let suggestionController = null;
     let debounceTimer = null;
@@ -574,6 +631,14 @@
       input.value = button.dataset.text;
       closeSuggestions();
       fetchProducts(input.value);
+    });
+
+    document.querySelectorAll(".sample-query").forEach((queryButton) => {
+      queryButton.addEventListener("click", () => {
+        input.value = queryButton.dataset.query;
+        closeSuggestions();
+        fetchProducts(input.value);
+      });
     });
 
     input.addEventListener("input", () => {
