@@ -25,15 +25,18 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 @Service
 public class ProductService {
 
 	private static final Logger log = LoggerFactory.getLogger(ProductService.class);
+	private static final Map<String, List<String>> SEARCH_INTENTS = searchIntents();
 
 	private final ProductRepository repository;
 	private final WebClient webClient;
@@ -42,6 +45,30 @@ public class ProductService {
 	private final WeaviateClient weaviateClient;
 	private final OpenAiClient openAiClient;
 	private final ObjectMapper mapper = new ObjectMapper();
+
+	private static Map<String, List<String>> searchIntents() {
+		Map<String, List<String>> intents = new LinkedHashMap<>();
+		intents.put("lap", List.of("laptop", "notebook", "ultrabook", "macbook", "gaming laptop"));
+		intents.put("laptop", List.of("notebook", "ultrabook", "macbook", "dell xps", "hp spectre", "thinkpad", "surface pro", "gaming laptop"));
+		intents.put("notebook", List.of("laptop", "macbook", "dell xps", "hp spectre", "surface pro"));
+		intents.put("computer", List.of("laptop", "macbook", "surface pro", "dell xps", "hp spectre"));
+		intents.put("mobile charger", List.of("phone charger", "usb-c charger", "fast charger", "wireless charger", "power bank", "charging stand", "belkin boostcharge", "anker power bank"));
+		intents.put("phone charger", List.of("mobile charger", "usb-c charger", "fast charger", "wireless charger", "power bank", "charging stand"));
+		intents.put("charger", List.of("mobile charger", "phone charger", "usb-c charger", "fast charger", "wireless charger", "power bank", "charging stand", "adapter"));
+		intents.put("type c", List.of("usb-c charger", "type-c charger", "phone charger", "fast charger", "charging cable", "power adapter", "power bank"));
+		intents.put("type-c", List.of("usb-c charger", "type-c charger", "phone charger", "fast charger", "charging cable", "power adapter", "power bank"));
+		intents.put("usb c", List.of("usb-c charger", "type-c charger", "phone charger", "fast charger", "charging cable", "power adapter", "power bank"));
+		intents.put("usb-c", List.of("usb-c charger", "type-c charger", "phone charger", "fast charger", "charging cable", "power adapter", "power bank"));
+		intents.put("mobile", List.of("phone", "smartphone", "iphone", "galaxy", "pixel", "oneplus", "motorola", "nokia", "xperia", "redmi"));
+		intents.put("phone", List.of("mobile", "smartphone", "iphone", "galaxy", "pixel", "oneplus", "motorola", "nokia", "xperia", "redmi"));
+		intents.put("smartphone", List.of("phone", "mobile", "iphone", "galaxy", "pixel", "oneplus"));
+		intents.put("tablet", List.of("ipad", "tab", "fire hd", "surface pro"));
+		intents.put("earphone", List.of("earbuds", "airpods", "galaxy buds", "headphones"));
+		intents.put("headset", List.of("headphones", "earbuds", "airpods", "noise cancelling"));
+		intents.put("wifi", List.of("router", "mesh router", "wi-fi 6", "networking"));
+		intents.put("watch", List.of("smartwatch", "fitness tracker", "apple watch", "galaxy watch", "garmin", "fitbit"));
+		return Collections.unmodifiableMap(intents);
+	}
 
 	public ProductService(ProductRepository repository,
 						  WebClient.Builder webClientBuilder,
@@ -109,13 +136,26 @@ public class ProductService {
 				.map(tuple -> mergeSearchResults(tuple.getT1(), tuple.getT2(), page, size));
 	}
 
+	public Mono<PageResponse<ProductDto>> searchOpenSearch(String q, int page, int size) {
+		return lexicalSearch(q, page, size);
+	}
+
+	public Mono<PageResponse<ProductDto>> searchAi(String q, int page, int size) {
+		if (page > 0) {
+			return Mono.just(new PageResponse<>(List.of(), page, size, 0));
+		}
+		return semanticProducts(q, size)
+				.collectList()
+				.map(products -> new PageResponse<>(products, page, size, products.size()));
+	}
+
 	private Mono<PageResponse<ProductDto>> lexicalSearch(String q, int page, int size) {
 		int from = page * size;
 		String expandedQuery = expandQuery(q);
 		// Build a combined fuzzy + prefix query to improve typo tolerance and prefix matching.
 		Map<@NonNull String, @NonNull Object> multiMatch = new HashMap<>();
 		multiMatch.put("query", expandedQuery);
-		multiMatch.put("fields", List.of("name^3", "description"));
+		multiMatch.put("fields", List.of("name^4", "description^2", "searchText"));
 		multiMatch.put("type", "best_fields");
 		multiMatch.put("fuzziness", "AUTO");
 
@@ -172,10 +212,15 @@ public class ProductService {
 
 	public Mono<SuggestionResponse> suggestions(String q, int size) {
 		int max = Math.max(1, Math.min(size, 5));
-		return prefixSuggestions(q, max)
+		List<ProductSuggestion> intents = intentSuggestions(q, 2);
+		int prefixLimit = Math.max(1, max - intents.size());
+		return prefixSuggestions(q, prefixLimit)
 				.zipWith(semanticSuggestions(q, max).collectList())
 				.map(tuple -> {
 					Map<String, ProductSuggestion> merged = new LinkedHashMap<>();
+					for (ProductSuggestion suggestion : intents) {
+						merged.put(suggestionKey(suggestion), suggestion);
+					}
 					for (ProductSuggestion suggestion : tuple.getT1()) {
 						merged.put(suggestionKey(suggestion), suggestion);
 					}
@@ -246,6 +291,7 @@ public class ProductService {
 		body.put("id", p.getId());
 		body.put("name", safeText(p.getName()));
 		body.put("description", safeText(p.getDescription()));
+		body.put("searchText", productText(p));
 		body.put("price", safePrice(p.getPrice()));
 
 		return webClient.put()
@@ -380,6 +426,7 @@ public class ProductService {
 		Map<@NonNull String, @NonNull Object> props = new HashMap<>();
 		props.put("name", safeText(product.getName()));
 		props.put("description", safeText(product.getDescription()));
+		props.put("searchText", productText(product));
 		props.put("price", safePrice(product.getPrice()));
 		return props;
 	}
@@ -410,7 +457,7 @@ public class ProductService {
 	}
 
 	private Flux<ProductSuggestion> semanticSuggestions(String q, int size) {
-		return semanticProducts(q, size)
+		return semanticProducts(q, Math.max(size, 5))
 				.map(product -> new ProductSuggestion("SEMANTIC", product.getId(), product.getName()))
 				.onErrorResume(e -> Flux.empty());
 	}
@@ -445,31 +492,89 @@ public class ProductService {
 	}
 
 	private String expandQuery(String q) {
-		String normalized = q == null ? "" : q.trim().toLowerCase();
-		Map<String, List<String>> synonyms = Map.ofEntries(
-				Map.entry("mobile", List.of("phone", "smartphone", "iphone", "galaxy", "pixel", "oneplus", "motorola", "nokia", "xperia", "redmi")),
-				Map.entry("phone", List.of("mobile", "smartphone", "iphone", "galaxy", "pixel", "oneplus", "motorola", "nokia", "xperia", "redmi")),
-				Map.entry("smartphone", List.of("phone", "mobile", "iphone", "galaxy", "pixel", "oneplus")),
-				Map.entry("laptop", List.of("macbook", "notebook", "ultrabook", "dell xps", "hp spectre", "surface pro")),
-				Map.entry("notebook", List.of("laptop", "macbook", "dell xps", "hp spectre", "surface pro")),
-				Map.entry("computer", List.of("laptop", "macbook", "surface pro", "dell xps", "hp spectre")),
-				Map.entry("tablet", List.of("ipad", "tab", "fire hd", "surface pro"))
-		);
-
-		List<String> terms = new ArrayList<>();
-		terms.add(q == null ? "" : q);
-		for (Map.Entry<String, List<String>> entry : synonyms.entrySet()) {
-			if (normalized.contains(entry.getKey())) {
-				terms.addAll(entry.getValue());
-			}
-		}
-		return String.join(" ", terms);
+		return String.join(" ", expandedTerms(q));
 	}
 
 	private String productText(ProductDto product) {
-		return String.join(" ",
+		String base = String.join(" ",
 				product.getName() == null ? "" : product.getName(),
 				product.getDescription() == null ? "" : product.getDescription());
+		return base + " " + productAliases(base);
+	}
+
+	private List<String> expandedTerms(String q) {
+		String original = q == null ? "" : q.trim();
+		String normalized = normalizeSearchText(original);
+		List<String> terms = new ArrayList<>();
+		if (!original.isBlank()) {
+			terms.add(original);
+		}
+		if (!normalized.isBlank() && !normalized.equalsIgnoreCase(original)) {
+			terms.add(normalized);
+		}
+		for (Map.Entry<String, List<String>> entry : SEARCH_INTENTS.entrySet()) {
+			String key = normalizeSearchText(entry.getKey());
+			if (normalized.equals(key) || normalized.contains(key) || key.startsWith(normalized)) {
+				terms.addAll(entry.getValue());
+			}
+		}
+		return terms.stream()
+				.filter(term -> term != null && !term.isBlank())
+				.distinct()
+				.toList();
+	}
+
+	private List<ProductSuggestion> intentSuggestions(String q, int size) {
+		String normalized = normalizeSearchText(q);
+		if (normalized.length() < 2) {
+			return List.of();
+		}
+		List<ProductSuggestion> suggestions = new ArrayList<>();
+		for (Map.Entry<String, List<String>> entry : SEARCH_INTENTS.entrySet()) {
+			String key = normalizeSearchText(entry.getKey());
+			if (key.startsWith(normalized) || key.contains(normalized) || normalized.contains(key)) {
+				String text = entry.getValue().isEmpty() ? entry.getKey() : entry.getValue().getFirst();
+				suggestions.add(new ProductSuggestion("AI", null, text));
+				for (String related : entry.getValue()) {
+					suggestions.add(new ProductSuggestion("AI", null, related));
+				}
+			}
+		}
+		return suggestions.stream()
+				.filter(suggestion -> suggestion.getText() != null && !suggestion.getText().isBlank())
+				.filter(suggestion -> !normalizeSearchText(suggestion.getText()).equals(normalized))
+				.collect(LinkedHashMap<String, ProductSuggestion>::new,
+						(map, suggestion) -> map.putIfAbsent(normalizeSearchText(suggestion.getText()), suggestion),
+						LinkedHashMap::putAll)
+				.values()
+				.stream()
+				.limit(size)
+				.toList();
+	}
+
+	private String productAliases(String text) {
+		String normalized = normalizeSearchText(text);
+		List<String> aliases = new ArrayList<>();
+		for (Map.Entry<String, List<String>> entry : SEARCH_INTENTS.entrySet()) {
+			String key = normalizeSearchText(entry.getKey());
+			boolean productMatchesKey = normalized.contains(key);
+			boolean productMatchesAlias = entry.getValue().stream()
+					.map(this::normalizeSearchText)
+					.anyMatch(normalized::contains);
+			if (productMatchesKey || productMatchesAlias) {
+				aliases.add(entry.getKey());
+				aliases.addAll(entry.getValue());
+			}
+		}
+		return String.join(" ", aliases.stream().distinct().toList());
+	}
+
+	private String normalizeSearchText(String value) {
+		return value == null ? "" : value.toLowerCase(Locale.ROOT)
+				.replace('-', ' ')
+				.replace('_', ' ')
+				.replaceAll("\\s+", " ")
+				.trim();
 	}
 
 	private String suggestionKey(ProductSuggestion suggestion) {

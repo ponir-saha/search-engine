@@ -76,4 +76,18 @@ public class ProductController {
 												 @RequestParam(defaultValue = "10") int size) {
 		return service.search(q, page, size);
 	}
+
+	@GetMapping(value = "/search/opensearch", produces = MediaType.APPLICATION_JSON_VALUE)
+	public Mono<PageResponse<ProductDto>> searchOpenSearch(@RequestParam String q,
+														   @RequestParam(defaultValue = "0") int page,
+														   @RequestParam(defaultValue = "10") int size) {
+		return service.searchOpenSearch(q, page, size);
+	}
+
+	@GetMapping(value = "/search/ai", produces = MediaType.APPLICATION_JSON_VALUE)
+	public Mono<PageResponse<ProductDto>> searchAi(@RequestParam String q,
+												   @RequestParam(defaultValue = "0") int page,
+												   @RequestParam(defaultValue = "10") int size) {
+		return service.searchAi(q, page, size);
+	}
 }
