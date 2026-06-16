@@ -46,4 +46,34 @@ class SearchIntentCatalogTests {
 				.contains("usb-c charger")
 				.contains("power bank");
 	}
+
+	@Test
+	void expandsShoeIntentToRunningProductTerms() {
+		assertThat(catalog.expandQuery("shoe"))
+				.contains("shoes for men")
+				.contains("shoes for running")
+				.contains("runner")
+				.contains("sneaker");
+	}
+
+	@Test
+	void suggestsShoeIntentBeforeProductLookup() {
+		List<ProductSuggestion> suggestions = catalog.intentSuggestions("shoe", 2);
+
+		assertThat(suggestions)
+				.extracting(ProductSuggestion::getText)
+				.containsExactly("shoes for men", "shoes for running");
+		assertThat(suggestions)
+				.extracting(ProductSuggestion::getType)
+				.containsOnly("AI");
+	}
+
+	@Test
+	void enrichesRunnerProductsWithShoeAliases() {
+		assertThat(catalog.productAliases("Nike runner for daily running and comfort"))
+				.contains("shoe")
+				.contains("shoes for running")
+				.contains("sneaker")
+				.contains("footwear");
+	}
 }

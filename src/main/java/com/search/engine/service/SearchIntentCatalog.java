@@ -115,6 +115,14 @@ public class SearchIntentCatalog {
 		intents.put("tablet", List.of("ipad", "tab", "fire hd", "surface pro"));
 		intents.put("earphone", List.of("earbuds", "airpods", "galaxy buds", "headphones"));
 		intents.put("headset", List.of("headphones", "earbuds", "airpods", "noise cancelling"));
+		intents.put("shoe", List.of("shoes for men", "shoes for running", "running shoe", "sneaker", "trainer", "runner", "running", "footwear", "nike runner"));
+		intents.put("shoes", List.of("shoes for men", "shoes for running", "running shoe", "sneaker", "trainer", "runner", "running", "footwear", "nike runner"));
+		intents.put("running shoe", List.of("shoe", "shoes for running", "runner", "running", "sneaker", "trainer", "nike runner", "footwear"));
+		intents.put("sneaker", List.of("shoe", "shoes", "running shoe", "trainer", "runner", "footwear"));
+		intents.put("trainer", List.of("shoe", "shoes", "sneaker", "running shoe", "runner", "footwear"));
+		intents.put("runner", List.of("shoe", "shoes", "running shoe", "shoes for running", "sneaker", "trainer", "footwear"));
+		intents.put("running", List.of("shoe", "shoes", "running shoe", "shoes for running", "runner", "sneaker", "trainer", "footwear"));
+		intents.put("footwear", List.of("shoe", "shoes", "sneaker", "trainer", "running shoe", "runner"));
 		intents.put("wifi", List.of("router", "mesh router", "wi-fi 6", "networking"));
 		intents.put("watch", List.of("smartwatch", "fitness tracker", "apple watch", "galaxy watch", "garmin", "fitbit"));
 		return Collections.unmodifiableMap(intents);
