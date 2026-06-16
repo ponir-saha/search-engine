@@ -56,29 +56,29 @@ fi
 
 mkdir -p logs
 
-export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://localhost:4317}"
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://127.0.0.1:4317}"
 export OTEL_EXPORTER_OTLP_PROTOCOL="${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}"
 
 echo "Starting local services..."
 docker compose up -d postgres opensearch zookeeper kafka connect weaviate prometheus loki promtail tempo otel-collector grafana
 
 wait_for_postgres
-wait_for_http "OpenSearch" "http://localhost:9200/_cluster/health"
-wait_for_http "Kafka Connect" "http://localhost:8083/connectors"
-wait_for_http "Weaviate" "http://localhost:8085/v1/meta"
-wait_for_http "Prometheus" "http://localhost:9090/-/ready"
-wait_for_http "Grafana" "http://localhost:3000/api/health"
-wait_for_http "Loki" "http://localhost:3100/ready"
-wait_for_http "Tempo" "http://localhost:3200/ready"
+wait_for_http "OpenSearch" "http://127.0.0.1:9200/_cluster/health"
+wait_for_http "Kafka Connect" "http://127.0.0.1:8083/connectors"
+wait_for_http "Weaviate" "http://127.0.0.1:8085/v1/meta"
+wait_for_http "Prometheus" "http://127.0.0.1:9090/-/ready"
+wait_for_http "Grafana" "http://127.0.0.1:3000/api/health"
+wait_for_http "Loki" "http://127.0.0.1:3100/ready"
+wait_for_http "Tempo" "http://127.0.0.1:3200/ready"
 
-if curl -fsS "http://localhost:8083/connectors/${CONNECTOR_NAME}" >/dev/null 2>&1; then
+if curl -fsS "http://127.0.0.1:8083/connectors/${CONNECTOR_NAME}" >/dev/null 2>&1; then
   echo "Debezium connector ${CONNECTOR_NAME} already exists."
 else
   echo "Registering Debezium connector ${CONNECTOR_NAME}..."
   curl -fsS -X POST \
     -H "Content-Type: application/json" \
     --data @"${CONNECTOR_FILE}" \
-    "http://localhost:8083/connectors" >/dev/null
+    "http://127.0.0.1:8083/connectors" >/dev/null
 fi
 
 echo "Starting Spring Boot on port ${APP_PORT}..."

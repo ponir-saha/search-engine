@@ -188,22 +188,22 @@ If port `8082` is already in use, stop the old Java process shown by the script 
 
 ### 4. Open The UI
 
-- Search page: `http://localhost:8082/index.html`
-- Product CRUD page: `http://localhost:8082/products.html`
+- Search page: `http://127.0.0.1:8082/index.html`
+- Product CRUD page: `http://127.0.0.1:8082/products.html`
 
 ### 5. Verify Semantic Search
 
 ```bash
-curl "http://localhost:8082/api/products/semantic-status"
-curl "http://localhost:8082/api/products/search?q=mobile&page=0&size=10"
-curl "http://localhost:8082/api/products/search?q=laptop&page=0&size=10"
-curl "http://localhost:8082/api/products/suggestions?q=mobile&size=5"
+curl "http://127.0.0.1:8082/api/products/semantic-status"
+curl "http://127.0.0.1:8082/api/products/search?q=mobile&page=0&size=10"
+curl "http://127.0.0.1:8082/api/products/search?q=laptop&page=0&size=10"
+curl "http://127.0.0.1:8082/api/products/suggestions?q=mobile&size=5"
 ```
 
 Check Weaviate product count:
 
 ```bash
-curl -X POST "http://localhost:8085/v1/graphql" \
+curl -X POST "http://127.0.0.1:8085/v1/graphql" \
   -H "Content-Type: application/json" \
   -d '{"query":"{ Aggregate { Product { meta { count } } } }"}'
 ```
@@ -215,13 +215,13 @@ Important environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | empty | OpenAI embeddings API key |
-| `R2DBC_URL` | `r2dbc:postgresql://localhost:5432/products_db` | Postgres R2DBC URL |
+| `R2DBC_URL` | `r2dbc:postgresql://127.0.0.1:5432/products_db` | Postgres R2DBC URL |
 | `POSTGRES_USER` | `pguser` | Postgres user |
 | `POSTGRES_PASSWORD` | `pgpass` | Postgres password |
-| `JDBC_URL` | `jdbc:postgresql://localhost:5432/products_db` | JDBC URL used by Flyway migrations |
+| `JDBC_URL` | `jdbc:postgresql://127.0.0.1:5432/products_db` | JDBC URL used by Flyway migrations |
 | `FLYWAY_ENABLED` | `true` | Enables database migrations |
-| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9093` | Kafka bootstrap server for the app |
-| `OPENSEARCH_URL` | `http://localhost:9200` | OpenSearch URL |
+| `KAFKA_BOOTSTRAP_SERVERS` | `127.0.0.1:9093` | Kafka bootstrap server for the app |
+| `OPENSEARCH_URL` | `http://127.0.0.1:9200` | OpenSearch URL |
 | `OPENSEARCH_INDEX_PRODUCTS` | `products` | Product index name |
 | `APP_KAFKA_TOPIC` | `dbserver1.public.products` | Debezium product topic |
 | `APP_KAFKA_GROUP_ID` | `search-engine-group` | Kafka consumer group id |
@@ -233,9 +233,9 @@ Important environment variables:
 | `APP_BOOTSTRAP_DATASET` | `classpath:data/products.tsv` | Product dataset location |
 | `APP_BOOTSTRAP_WAIT_FOR_INDEXES` | `true` | Wait for CDC indexing counts before startup finishes |
 | `APP_BOOTSTRAP_WAIT_TIMEOUT` | `PT15M` | Max time to wait for OpenSearch/Weaviate counts |
-| `VECTORDB_URL` | `http://localhost:8085` | Weaviate URL |
+| `VECTORDB_URL` | `http://127.0.0.1:8085` | Weaviate URL |
 | `VECTORDB_TYPE` | `weaviate` | Vector database type |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `http://localhost:4317` | OpenTelemetry trace export endpoint. The local app uses OTLP gRPC. |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `http://127.0.0.1:4317` | OpenTelemetry trace export endpoint. The local app uses OTLP gRPC. |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | OTLP protocol for local trace export |
 | `MANAGEMENT_TRACING_SAMPLING_PROBABILITY` | `1.0` | Trace sample rate for local development |
 | `LOG_FILE` | `logs/search-engine.log` | App log file tailed by Promtail |
@@ -269,12 +269,13 @@ Open the tools:
 
 | Tool | URL | Notes |
 | --- | --- | --- |
-| Grafana | `http://localhost:3000` | Login `admin` / `admin` |
-| Prometheus | `http://localhost:9090` | Metrics queries and scrape status |
-| Loki | `http://localhost:3100/ready` | Log backend readiness |
-| Tempo | `http://localhost:3200/ready` | Trace backend readiness |
-| Actuator Health | `http://localhost:8082/actuator/health` | App health |
-| Actuator Metrics | `http://localhost:8082/actuator/prometheus` | Prometheus scrape endpoint |
+| Grafana | `http://127.0.0.1:3000` | Login `admin` / `admin` |
+| Prometheus | `http://127.0.0.1:9090` | Metrics queries and scrape status |
+| Loki | `http://127.0.0.1:3100/ready` | Log backend readiness. Use Grafana for the log UI. |
+| Tempo | `http://127.0.0.1:3200/ready` | Trace backend readiness. Use Grafana for the trace UI. |
+| OTLP HTTP receiver | `http://127.0.0.1:4318` | Ingest API only; a `404` at `/` is normal. |
+| Actuator Health | `http://127.0.0.1:8082/actuator/health` | App health |
+| Actuator Metrics | `http://127.0.0.1:8082/actuator/prometheus` | Prometheus scrape endpoint |
 
 Useful Grafana queries:
 
@@ -294,12 +295,12 @@ Loki:
 Generate traffic to see metrics, logs, and traces:
 
 ```bash
-curl "http://localhost:8082/api/products?page=0&size=5"
-curl "http://localhost:8082/api/products/search?q=mobile&page=0&size=10"
-curl "http://localhost:8082/api/products/semantic-status"
+curl "http://127.0.0.1:8082/api/products?page=0&size=5"
+curl "http://127.0.0.1:8082/api/products/search?q=mobile&page=0&size=10"
+curl "http://127.0.0.1:8082/api/products/semantic-status"
 ```
 
-If you see `415 Unsupported Media Type` from `http://localhost:4318/v1/traces`, the app is sending OTLP gRPC traffic to the OTLP HTTP endpoint. Use the local default `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4317`, or set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` when intentionally sending to `4318/v1/traces`.
+If you see `415 Unsupported Media Type` from `http://127.0.0.1:4318/v1/traces`, the app is sending OTLP gRPC traffic to the OTLP HTTP endpoint. Use the local default `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4317`, or set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` when intentionally sending to `4318/v1/traces`.
 
 ## CDC Flow
 
@@ -315,26 +316,26 @@ If you see `415 Unsupported Media Type` from `http://localhost:4318/v1/traces`, 
 Check app status:
 
 ```bash
-curl "http://localhost:8082/api/products/semantic-status"
+curl "http://127.0.0.1:8082/api/products/semantic-status"
 ```
 
 Register or inspect Debezium connector:
 
 ```bash
-curl "http://localhost:8083/connectors"
-curl "http://localhost:8083/connectors/products-connector/status"
+curl "http://127.0.0.1:8083/connectors"
+curl "http://127.0.0.1:8083/connectors/products-connector/status"
 ```
 
 Check OpenSearch count:
 
 ```bash
-curl "http://localhost:9200/products/_count"
+curl "http://127.0.0.1:9200/products/_count"
 ```
 
 Check Weaviate count:
 
 ```bash
-curl -X POST "http://localhost:8085/v1/graphql" \
+curl -X POST "http://127.0.0.1:8085/v1/graphql" \
   -H "Content-Type: application/json" \
   -d '{"query":"{ Aggregate { Product { meta { count } } } }"}'
 ```
