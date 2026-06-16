@@ -55,7 +55,7 @@ public class KafkaProductConsumer {
 
             ProductDto p = new ProductDto(id, name, description, price);
 
-            productService.indexProductStrict(p).block();
+            productService.indexProductFromCdc(p).block();
             log.info("Indexed product {} in search stores from CDC event.", id);
 
         } catch (Exception e) {

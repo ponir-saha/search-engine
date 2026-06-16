@@ -268,6 +268,11 @@ public class ProductService {
 				.flatMap(vector -> upsertProductVectorStrict(product, vector));
 	}
 
+	public Mono<Void> indexProductFromCdc(ProductDto product) {
+		return upsertToOpenSearchStrict(product)
+				.then(upsertProductVectorIfAvailable(product));
+	}
+
 	public Mono<Void> upsertToOpenSearch(ProductDto p) {
 		return upsertToOpenSearchStrict(p)
 				.onErrorResume(e -> Mono.empty());
@@ -424,6 +429,25 @@ public class ProductService {
 			return Mono.error(new IllegalStateException("OpenAI returned an empty embedding vector"));
 		}
 		return weaviateClient.upsertStrict("Product", String.valueOf(product.getId()), productProperties(product), vector);
+	}
+
+	private Mono<Void> upsertProductVectorIfAvailable(ProductDto product) {
+		if (!openAiClient.isConfigured()) {
+			log.warn("Skipping vector sync for product {} because OPENAI_API_KEY is not configured.", product.getId());
+			return Mono.empty();
+		}
+		return openAiClient.embed(productText(product))
+				.flatMap(vector -> {
+					if (vector.isEmpty()) {
+						log.warn("Skipping vector sync for product {} because OpenAI returned an empty embedding vector.", product.getId());
+						return Mono.empty();
+					}
+					return weaviateClient.upsertStrict("Product", String.valueOf(product.getId()), productProperties(product), vector);
+				})
+				.onErrorResume(error -> {
+					log.warn("Skipping vector sync for product {} after embedding/vector error: {}", product.getId(), error.getMessage());
+					return Mono.empty();
+				});
 	}
 
 	private Map<@NonNull String, @NonNull Object> productProperties(ProductDto product) {

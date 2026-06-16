@@ -58,7 +58,7 @@ class KafkaProductConsumerTests {
 		}
 
 		@Override
-		public Mono<Void> indexProductStrict(ProductDto product) {
+		public Mono<Void> indexProductFromCdc(ProductDto product) {
 			indexedProducts.add(product);
 			return Mono.empty();
 		}
