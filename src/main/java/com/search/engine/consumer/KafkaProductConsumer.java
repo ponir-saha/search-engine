@@ -6,10 +6,8 @@ import com.search.engine.model.ProductDto;
 import com.search.engine.service.ProductService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Mono;
 
 @Component
 public class KafkaProductConsumer {
@@ -19,11 +17,11 @@ public class KafkaProductConsumer {
     private final ObjectMapper mapper = new ObjectMapper();
     private final ProductService productService;
 
-    public KafkaProductConsumer(ProductService productService, @Value("${app.kafka.topic:dbserver1.public.products}") String topic) {
+    public KafkaProductConsumer(ProductService productService) {
         this.productService = productService;
     }
 
-    @KafkaListener(topics = "${app.kafka.topic:dbserver1.public.products}", groupId = "search-engine-group")
+    @KafkaListener(topics = "${app.kafka.topic:dbserver1.public.products}", groupId = "${app.kafka.group-id:search-engine-group}")
     public void handle(String message) {
         try {
             JsonNode root = mapper.readTree(message);
@@ -46,13 +44,11 @@ public class KafkaProductConsumer {
 
             ProductDto p = new ProductDto(id, name, description, price);
 
-            productService.indexProduct(p).onErrorResume(e -> {
-                log.error("Failed to index product", e);
-                return Mono.empty();
-            }).block();
+            productService.indexProduct(p).block();
 
         } catch (Exception e) {
             log.error("Failed to process Kafka message", e);
+            throw new IllegalStateException("Failed to process product CDC event", e);
         }
     }
 

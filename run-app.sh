@@ -31,6 +31,23 @@ wait_for_http() {
   return 1
 }
 
+wait_for_postgres() {
+  local attempts="${1:-60}"
+
+  printf 'Waiting for Postgres'
+  for _ in $(seq 1 "$attempts"); do
+    if docker compose exec -T postgres pg_isready -U "${POSTGRES_USER:-pguser}" -d "${POSTGRES_DB:-products_db}" >/dev/null 2>&1; then
+      printf ' ready\n'
+      return 0
+    fi
+    printf '.'
+    sleep 2
+  done
+
+  printf '\nPostgres did not become ready\n' >&2
+  return 1
+}
+
 if [[ -n "${OPENAI_API_KEY:-}" ]]; then
   echo "OPENAI_API_KEY is configured for this run."
 else
@@ -42,6 +59,7 @@ mkdir -p logs
 echo "Starting local services..."
 docker compose up -d postgres opensearch zookeeper kafka connect weaviate prometheus loki promtail tempo otel-collector grafana
 
+wait_for_postgres
 wait_for_http "OpenSearch" "http://localhost:9200/_cluster/health"
 wait_for_http "Kafka Connect" "http://localhost:8083/connectors"
 wait_for_http "Weaviate" "http://localhost:8085/v1/meta"

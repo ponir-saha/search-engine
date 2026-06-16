@@ -1,0 +1,25 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+app:
+  bootstrap:
+    enabled: ${APP_BOOTSTRAP_ENABLED:false}
+    wait-for-indexes: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: never
+  tracing:
+    sampling:
+      probability: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:0.1}
+
+logging:
+  file:
+    name: ${LOG_FILE:}

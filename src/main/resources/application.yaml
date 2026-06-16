@@ -5,6 +5,11 @@ spring:
     url: ${R2DBC_URL:r2dbc:postgresql://localhost:5432/products_db}
     username: ${POSTGRES_USER:pguser}
     password: ${POSTGRES_PASSWORD:pgpass}
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    url: ${JDBC_URL:jdbc:postgresql://localhost:5432/products_db}
+    user: ${POSTGRES_USER:pguser}
+    password: ${POSTGRES_PASSWORD:pgpass}
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
@@ -20,6 +25,12 @@ app:
     index: ${OPENSEARCH_INDEX_PRODUCTS:products}
   kafka:
     topic: ${APP_KAFKA_TOPIC:dbserver1.public.products}
+    group-id: ${APP_KAFKA_GROUP_ID:search-engine-group}
+    dlq-topic: ${APP_KAFKA_DLQ_TOPIC:dbserver1.public.products.dlq}
+    concurrency: ${APP_KAFKA_CONCURRENCY:1}
+    retry:
+      max-attempts: ${APP_KAFKA_RETRY_MAX_ATTEMPTS:3}
+      interval-ms: ${APP_KAFKA_RETRY_INTERVAL_MS:2000}
   bootstrap:
     enabled: ${APP_BOOTSTRAP_ENABLED:true}
     dataset: ${APP_BOOTSTRAP_DATASET:classpath:data/products.tsv}

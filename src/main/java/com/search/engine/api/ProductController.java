@@ -6,6 +6,7 @@ import com.search.engine.model.ProductSyncResult;
 import com.search.engine.model.SemanticStatusResult;
 import com.search.engine.model.SuggestionResponse;
 import com.search.engine.service.ProductService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -55,12 +56,12 @@ public class ProductController {
 
 	@ResponseStatus(HttpStatus.CREATED)
 	@PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-	public Mono<ProductDto> create(@RequestBody ProductDto product) {
+	public Mono<ProductDto> create(@Valid @RequestBody ProductDto product) {
 		return service.create(product);
 	}
 
 	@PutMapping(value = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-	public Mono<ProductDto> update(@PathVariable Long id, @RequestBody ProductDto product) {
+	public Mono<ProductDto> update(@PathVariable Long id, @Valid @RequestBody ProductDto product) {
 		return service.update(id, product);
 	}
 

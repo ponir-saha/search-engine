@@ -1,0 +1,17 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+
+app:
+  bootstrap:
+    enabled: ${APP_BOOTSTRAP_ENABLED:true}
+    wait-for-indexes: ${APP_BOOTSTRAP_WAIT_FOR_INDEXES:true}
+
+management:
+  endpoint:
+    health:
+      show-details: always
+  tracing:
+    sampling:
+      probability: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:1.0}

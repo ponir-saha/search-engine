@@ -1,0 +1,8 @@
+target/
+.git/
+.idea/
+.env
+logs/
+*.log
+*.tmp
+*.pid

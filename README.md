@@ -15,6 +15,9 @@ A Spring Boot WebFlux product search service with product CRUD, OpenSearch lexic
 - OpenAI `text-embedding-3-small` embeddings
 - Startup bootstrap from `src/main/resources/data/products.tsv`
 - Automatic loading of 3000 product records only when the products table is empty
+- Flyway database migrations
+- Local and production Spring profiles
+- Kafka retry and dead-letter topic support for failed indexing events
 - Debezium Postgres CDC connector
 - Kafka consumer that indexes product changes into OpenSearch and Weaviate
 - One-command local runner through `./run-app.sh`
@@ -43,6 +46,7 @@ A Spring Boot WebFlux product search service with product CRUD, OpenSearch lexic
 - Spring Actuator, Micrometer, OpenTelemetry
 - Prometheus, Grafana, Loki, Promtail, Tempo, OpenTelemetry Collector
 - Docker Compose
+- Docker production image
 
 ## Services And Ports
 
@@ -181,10 +185,17 @@ Important environment variables:
 | `R2DBC_URL` | `r2dbc:postgresql://localhost:5432/products_db` | Postgres R2DBC URL |
 | `POSTGRES_USER` | `pguser` | Postgres user |
 | `POSTGRES_PASSWORD` | `pgpass` | Postgres password |
+| `JDBC_URL` | `jdbc:postgresql://localhost:5432/products_db` | JDBC URL used by Flyway migrations |
+| `FLYWAY_ENABLED` | `true` | Enables database migrations |
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9093` | Kafka bootstrap server for the app |
 | `OPENSEARCH_URL` | `http://localhost:9200` | OpenSearch URL |
 | `OPENSEARCH_INDEX_PRODUCTS` | `products` | Product index name |
 | `APP_KAFKA_TOPIC` | `dbserver1.public.products` | Debezium product topic |
+| `APP_KAFKA_GROUP_ID` | `search-engine-group` | Kafka consumer group id |
+| `APP_KAFKA_DLQ_TOPIC` | `dbserver1.public.products.dlq` | Dead-letter topic for failed CDC indexing events |
+| `APP_KAFKA_CONCURRENCY` | `1` | Kafka listener concurrency |
+| `APP_KAFKA_RETRY_MAX_ATTEMPTS` | `3` | Max attempts before DLQ |
+| `APP_KAFKA_RETRY_INTERVAL_MS` | `2000` | Retry backoff interval |
 | `APP_BOOTSTRAP_ENABLED` | `true` | Run startup product dataset bootstrap |
 | `APP_BOOTSTRAP_DATASET` | `classpath:data/products.tsv` | Product dataset location |
 | `APP_BOOTSTRAP_WAIT_FOR_INDEXES` | `true` | Wait for CDC indexing counts before startup finishes |
@@ -194,6 +205,18 @@ Important environment variables:
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `http://localhost:4318/v1/traces` | OpenTelemetry trace export endpoint |
 | `MANAGEMENT_TRACING_SAMPLING_PROBABILITY` | `1.0` | Trace sample rate for local development |
 | `LOG_FILE` | `logs/search-engine.log` | App log file tailed by Promtail |
+
+## Production Deployment
+
+Use [deploy/PRODUCTION.md](deploy/PRODUCTION.md) for production runtime guidance.
+
+Key production defaults are in `src/main/resources/application-prod.yaml`:
+
+- Startup dataset bootstrap is disabled.
+- Actuator health details are hidden.
+- Tracing samples at 10% by default.
+- Product schema is managed with Flyway migrations.
+- Kafka indexing failures retry and then publish to the configured DLQ.
 
 ## Observability
 
