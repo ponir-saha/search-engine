@@ -10,6 +10,7 @@ import com.search.engine.model.ProductDto;
 import com.search.engine.model.ProductSuggestion;
 import com.search.engine.model.ProductSyncResult;
 import com.search.engine.model.SemanticStatusResult;
+import com.search.engine.model.SearchIntentResult;
 import com.search.engine.model.SuggestionResponse;
 import org.jspecify.annotations.NonNull;
 import com.search.engine.repository.ProductRepository;
@@ -45,6 +46,7 @@ public class ProductService {
 	private final WeaviateClient weaviateClient;
 	private final OpenAiClient openAiClient;
 	private final SearchIntentCatalog searchIntentCatalog;
+	private final AiSearchIntentService aiSearchIntentService;
 	private final AiObservabilityService aiObservabilityService;
 	private final ObjectMapper mapper = new ObjectMapper();
 
@@ -55,6 +57,7 @@ public class ProductService {
 						  WeaviateClient weaviateClient,
 						  OpenAiClient openAiClient,
 						  SearchIntentCatalog searchIntentCatalog,
+						  AiSearchIntentService aiSearchIntentService,
 						  AiObservabilityService aiObservabilityService) {
 		this.repository = repository;
 		this.webClient = webClientBuilder.baseUrl(opensearchUrl).build();
@@ -63,6 +66,7 @@ public class ProductService {
 		this.weaviateClient = weaviateClient;
 		this.openAiClient = openAiClient;
 		this.searchIntentCatalog = searchIntentCatalog;
+		this.aiSearchIntentService = aiSearchIntentService;
 		this.aiObservabilityService = aiObservabilityService;
 	}
 
@@ -114,12 +118,12 @@ public class ProductService {
 
 	public Mono<PageResponse<ProductDto>> search(String q, int page, int size) {
 		Instant startedAt = Instant.now();
-		String expandedQuery = expandQuery(q);
-		return lexicalSearch(q, page, size)
-				.zipWith(semanticProducts(q, size).collectList())
-				.map(tuple -> mergeSearchResults(tuple.getT1(), tuple.getT2(), page, size))
-				.doOnSuccess(response -> recordAiSearch("hybrid", q, expandedQuery, response, startedAt, null))
-				.doOnError(error -> recordAiSearch("hybrid", q, expandedQuery, null, startedAt, error));
+		return aiSearchIntentService.resolve(q)
+				.flatMap(intent -> lexicalSearch(q, intent.expandedQuery(), page, size)
+						.zipWith(semanticProducts(intent, size).collectList())
+						.map(tuple -> mergeSearchResults(tuple.getT1(), tuple.getT2(), page, size))
+						.doOnSuccess(response -> recordAiSearch("hybrid", q, intent.expandedQuery(), response, startedAt, null))
+						.doOnError(error -> recordAiSearch("hybrid", q, intent.expandedQuery(), null, startedAt, error)));
 	}
 
 	public Mono<PageResponse<ProductDto>> searchOpenSearch(String q, int page, int size) {
@@ -128,22 +132,25 @@ public class ProductService {
 
 	public Mono<PageResponse<ProductDto>> searchAi(String q, int page, int size) {
 		Instant startedAt = Instant.now();
-		String expandedQuery = expandQuery(q);
 		if (page > 0) {
 			PageResponse<ProductDto> response = new PageResponse<>(List.of(), page, size, 0);
-			recordAiSearch("ai", q, expandedQuery, response, startedAt, null);
+			recordAiSearch("ai", q, q, response, startedAt, null);
 			return Mono.just(response);
 		}
-		return semanticProducts(q, size)
-				.collectList()
-				.map(products -> new PageResponse<>(products, page, size, products.size()))
-				.doOnSuccess(response -> recordAiSearch("ai", q, expandedQuery, response, startedAt, null))
-				.doOnError(error -> recordAiSearch("ai", q, expandedQuery, null, startedAt, error));
+		return aiSearchIntentService.resolve(q)
+				.flatMap(intent -> semanticProducts(intent, size)
+						.collectList()
+						.map(products -> new PageResponse<>(products, page, size, products.size()))
+						.doOnSuccess(response -> recordAiSearch("ai", q, intent.expandedQuery(), response, startedAt, null))
+						.doOnError(error -> recordAiSearch("ai", q, intent.expandedQuery(), null, startedAt, error)));
 	}
 
 	private Mono<PageResponse<ProductDto>> lexicalSearch(String q, int page, int size) {
+		return lexicalSearch(q, q, page, size);
+	}
+
+	private Mono<PageResponse<ProductDto>> lexicalSearch(String q, String expandedQuery, int page, int size) {
 		int from = page * size;
-		String expandedQuery = expandQuery(q);
 		// Build a combined fuzzy + prefix query to improve typo tolerance and prefix matching.
 		Map<@NonNull String, @NonNull Object> multiMatch = new HashMap<>();
 		multiMatch.put("query", expandedQuery);
@@ -205,22 +212,28 @@ public class ProductService {
 	public Mono<SuggestionResponse> suggestions(String q, int size) {
 		Instant startedAt = Instant.now();
 		int max = Math.max(1, Math.min(size, 5));
-		List<ProductSuggestion> intents = searchIntentCatalog.intentSuggestions(q, Math.min(4, max));
-		int prefixLimit = Math.max(0, max - intents.size());
-		return prefixSuggestions(q, prefixLimit)
-				.zipWith(semanticSuggestions(q, max).collectList())
-				.map(tuple -> {
-					Map<String, ProductSuggestion> merged = new LinkedHashMap<>();
-					for (ProductSuggestion suggestion : intents) {
-						merged.put(suggestionKey(suggestion), suggestion);
-					}
-					for (ProductSuggestion suggestion : tuple.getT1()) {
-						merged.put(suggestionKey(suggestion), suggestion);
-					}
-					for (ProductSuggestion suggestion : tuple.getT2()) {
-						merged.putIfAbsent(suggestionKey(suggestion), suggestion);
-					}
-					return new SuggestionResponse(q, merged.values().stream().limit(max).toList());
+		return aiSearchIntentService.resolve(q)
+				.flatMap(intent -> {
+					List<ProductSuggestion> aiSuggestions = intent.getSuggestions().stream()
+							.limit(Math.min(4, max))
+							.map(text -> new ProductSuggestion("AI", null, text))
+							.toList();
+					int productLimit = Math.max(0, max - aiSuggestions.size());
+					return prefixSuggestions(q, productLimit)
+							.zipWith(semanticSuggestions(intent, productLimit).collectList())
+							.map(tuple -> {
+								Map<String, ProductSuggestion> merged = new LinkedHashMap<>();
+								for (ProductSuggestion suggestion : aiSuggestions) {
+									merged.put(suggestionKey(suggestion), suggestion);
+								}
+								for (ProductSuggestion suggestion : tuple.getT1()) {
+									merged.putIfAbsent(suggestionKey(suggestion), suggestion);
+								}
+								for (ProductSuggestion suggestion : tuple.getT2()) {
+									merged.putIfAbsent(suggestionKey(suggestion), suggestion);
+								}
+								return new SuggestionResponse(q, merged.values().stream().limit(max).toList());
+							});
 				})
 				.doOnSuccess(response -> recordSuggestions(q, response, startedAt, null))
 				.doOnError(error -> recordSuggestions(q, null, startedAt, error));
@@ -510,17 +523,20 @@ public class ProductService {
 				.onErrorReturn(List.of());
 	}
 
-	private Flux<ProductSuggestion> semanticSuggestions(String q, int size) {
-		return semanticProducts(q, Math.max(size, 5))
+	private Flux<ProductSuggestion> semanticSuggestions(SearchIntentResult intent, int size) {
+		if (size <= 0) {
+			return Flux.empty();
+		}
+		return semanticProducts(intent, Math.max(size, 5))
 				.map(product -> new ProductSuggestion("SEMANTIC", product.getId(), product.getName()))
 				.onErrorResume(e -> Flux.empty());
 	}
 
-	private Flux<ProductDto> semanticProducts(String q, int size) {
+	private Flux<ProductDto> semanticProducts(SearchIntentResult intent, int size) {
 		int retrievalLimit = Math.max(size * 5, 20);
-		return openAiClient.embed(expandQuery(q))
+		return openAiClient.embed(intent.expandedQuery())
 				.flatMapMany(vector -> weaviateClient.searchNearVector("Product", vector, retrievalLimit))
-				.filter(product -> searchIntentCatalog.productMatchesQueryIntent(q, productText(product)))
+				.filter(product -> searchIntentCatalog.productMatchesIntent(intent, productText(product)))
 				.take(size)
 				.onErrorResume(e -> Flux.empty());
 	}
@@ -572,15 +588,10 @@ public class ProductService {
 		return "name:" + String.valueOf(product.getName()).toLowerCase();
 	}
 
-	private String expandQuery(String q) {
-		return searchIntentCatalog.expandQuery(q);
-	}
-
 	private String productText(ProductDto product) {
-		String base = String.join(" ",
+		return String.join(" ",
 				product.getName() == null ? "" : product.getName(),
 				product.getDescription() == null ? "" : product.getDescription());
-		return base + " " + searchIntentCatalog.productAliases(base);
 	}
 
 	private String suggestionKey(ProductSuggestion suggestion) {

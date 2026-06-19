@@ -19,6 +19,8 @@ opensearch:
 
 openai:
   api-key: ${OPENAI_API_KEY:}
+  intent-model: ${OPENAI_INTENT_MODEL:gpt-4.1-mini}
+  intent-cache-ttl: ${OPENAI_INTENT_CACHE_TTL:PT15M}
 
 app:
   products:

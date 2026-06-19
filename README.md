@@ -7,7 +7,7 @@ This project demonstrates the kind of backend/search engineering expected in rem
 ## Portfolio Highlights
 
 - Hybrid search: OpenSearch keyword/fuzzy matching plus OpenAI-powered vector search.
-- Ecommerce intent handling: queries like `lap`, `type-c`, and `mobile charger` map to relevant product categories.
+- AI-generated ecommerce intent handling: OpenAI creates canonical queries, semantic expansion terms, and autocomplete phrases at runtime.
 - CDC indexing pipeline: Postgres changes stream through Debezium and Kafka into OpenSearch and Weaviate.
 - Production-minded runtime: Flyway migrations, Spring profiles, Docker non-root image, Kafka retry/DLQ.
 - Observability stack: Prometheus, Grafana, Loki, Tempo, Promtail, OpenTelemetry, and AI-specific search quality metrics.
@@ -43,6 +43,7 @@ See [PORTFOLIO.md](PORTFOLIO.md) for the engineering story, tradeoffs, and resum
 - Random product cards on the home page
 - Search products by keyword with pagination
 - Autocomplete suggestions, limited to 5 results
+- Four model-generated intent suggestions plus an available-product fallback
 - Lexical search through OpenSearch
 - Semantic vector search through Weaviate
 - OpenAI `text-embedding-3-small` embeddings
@@ -238,6 +239,8 @@ Important environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | empty | OpenAI embeddings API key |
+| `OPENAI_INTENT_MODEL` | `gpt-4.1-mini` | OpenAI model used for structured search-intent generation |
+| `OPENAI_INTENT_CACHE_TTL` | `PT15M` | Cache duration for model-generated query intents |
 | `R2DBC_URL` | `r2dbc:postgresql://127.0.0.1:5432/products_db` | Postgres R2DBC URL |
 | `POSTGRES_USER` | `pguser` | Postgres user |
 | `POSTGRES_PASSWORD` | `pgpass` | Postgres password |

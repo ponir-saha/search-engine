@@ -75,6 +75,51 @@ public class AiObservabilityService {
 		}
 	}
 
+	public void recordOpenAiIntent(String model,
+								  String input,
+								  Duration latency,
+								  int inputTokens,
+								  int outputTokens,
+								  int totalTokens,
+								  boolean success,
+								  Throwable error) {
+		String status = success ? "success" : "error";
+		Counter.builder("ai_openai_requests_total")
+				.description("Total OpenAI API requests by operation, model and status.")
+				.tag("operation", "search_intent")
+				.tag("model", model)
+				.tag("status", status)
+				.register(registry)
+				.increment();
+
+		Timer.builder("ai_openai_latency")
+				.description("OpenAI API latency by operation and model.")
+				.tag("operation", "search_intent")
+				.tag("model", model)
+				.tag("status", status)
+				.publishPercentileHistogram()
+				.register(registry)
+				.record(latency.toNanos(), TimeUnit.NANOSECONDS);
+
+		recordTokenCounter(model, "search_intent", "input", inputTokens);
+		recordTokenCounter(model, "search_intent", "output", outputTokens);
+		recordTokenCounter(model, "search_intent", "total", totalTokens);
+
+		Span span = Span.current();
+		span.setAttribute("ai.operation", "search_intent");
+		span.setAttribute("ai.model", model);
+		span.setAttribute("ai.input.length", safeText(input).length());
+		span.setAttribute("ai.openai.input_tokens", inputTokens);
+		span.setAttribute("ai.openai.output_tokens", outputTokens);
+		span.setAttribute("ai.openai.total_tokens", totalTokens);
+		span.setAttribute("ai.openai.latency_ms", latency.toMillis());
+		span.setAttribute("ai.openai.status", status);
+		if (error != null) {
+			span.recordException(error);
+			span.setAttribute("ai.openai.error_type", error.getClass().getName());
+		}
+	}
+
 	public void recordSearch(String mode,
 							 String query,
 							 String expandedQuery,
@@ -192,12 +237,16 @@ public class AiObservabilityService {
 	}
 
 	private void recordTokenCounter(String model, String type, int tokens) {
+		recordTokenCounter(model, "embedding", type, tokens);
+	}
+
+	private void recordTokenCounter(String model, String operation, String type, int tokens) {
 		if (tokens <= 0) {
 			return;
 		}
 		Counter.builder("ai_openai_tokens_total")
 				.description("OpenAI token consumption by operation, model and token type.")
-				.tag("operation", "embedding")
+				.tag("operation", operation)
 				.tag("model", model)
 				.tag("type", type)
 				.register(registry)
@@ -222,15 +271,14 @@ public class AiObservabilityService {
 
 		for (ProductDto product : products) {
 			String productText = safeText(product.getName()) + " " + safeText(product.getDescription());
-			String productTextWithAliases = productText + " " + searchIntentCatalog.productAliases(productText);
 			boolean hasProductIdentity = product.getId() != null
 					&& !safeText(product.getName()).isBlank()
 					&& !safeText(product.getDescription()).isBlank()
-					&& searchIntentCatalog.productMatchesQueryIntent(query, productText);
+					&& searchIntentCatalog.productMatchesExpandedQuery(expandedQuery, productText);
 			if (hasProductIdentity) {
 				groundedProducts++;
 			}
-			Set<String> productTerms = tokenize(productTextWithAliases);
+			Set<String> productTerms = tokenize(productText);
 			for (String term : queryTerms) {
 				if (productTerms.contains(term)) {
 					matchedTerms.add(term);

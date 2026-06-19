@@ -54,7 +54,8 @@ class KafkaProductConsumerTests {
 		private final List<Long> deletedProductIds = new ArrayList<>();
 
 		FakeProductService() {
-			super(null, WebClient.builder(), "http://127.0.0.1:9200", "products", null, null, new SearchIntentCatalog(), null);
+			super(null, WebClient.builder(), "http://127.0.0.1:9200", "products", null, null,
+					new SearchIntentCatalog(), null, null);
 		}
 
 		@Override

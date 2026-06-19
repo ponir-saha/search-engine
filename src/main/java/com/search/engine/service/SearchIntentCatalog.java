@@ -1,116 +1,92 @@
 package com.search.engine.service;
 
-import com.search.engine.model.ProductSuggestion;
+import com.search.engine.model.SearchIntentResult;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 public class SearchIntentCatalog {
 
-	private static final Map<String, List<String>> SEARCH_INTENTS = searchIntents();
-
-	public String expandQuery(String query) {
-		return String.join(" ", expandedTerms(query));
-	}
-
-	public List<ProductSuggestion> intentSuggestions(String query, int size) {
+	public SearchIntentResult fallback(String query) {
 		String normalized = normalizeSearchText(query);
-		if (normalized.length() < 2) {
-			return List.of();
-		}
-
-		List<ProductSuggestion> suggestions = new ArrayList<>();
-		for (Map.Entry<String, List<String>> entry : SEARCH_INTENTS.entrySet()) {
-			String key = normalizeSearchText(entry.getKey());
-			if (key.startsWith(normalized) || key.contains(normalized) || normalized.contains(key)) {
-				String text = entry.getValue().isEmpty() ? entry.getKey() : entry.getValue().getFirst();
-				suggestions.add(new ProductSuggestion("AI", null, text));
-				for (String related : entry.getValue()) {
-					suggestions.add(new ProductSuggestion("AI", null, related));
-				}
-			}
-		}
-
-		return suggestions.stream()
-				.filter(suggestion -> suggestion.getText() != null && !suggestion.getText().isBlank())
-				.filter(suggestion -> !normalizeSearchText(suggestion.getText()).equals(normalized))
-				.collect(LinkedHashMap<String, ProductSuggestion>::new,
-						(map, suggestion) -> map.putIfAbsent(normalizeSearchText(suggestion.getText()), suggestion),
-						LinkedHashMap::putAll)
-				.values()
-				.stream()
-				.limit(size)
-				.toList();
+		return new SearchIntentResult(normalized, List.of(), List.of());
 	}
 
-	public String productAliases(String text) {
-		String normalized = normalizeSearchText(text);
-		List<String> aliases = new ArrayList<>();
-		for (Map.Entry<String, List<String>> entry : SEARCH_INTENTS.entrySet()) {
-			String key = normalizeSearchText(entry.getKey());
-			boolean productMatchesKey = phrasePresent(normalized, key);
-			boolean productMatchesAlias = entry.getValue().stream()
-					.map(this::normalizeSearchText)
-					.anyMatch(alias -> phrasePresent(normalized, alias));
-			if (productMatchesKey || productMatchesAlias) {
-				aliases.add(entry.getKey());
-				aliases.addAll(entry.getValue());
-			}
+	public SearchIntentResult sanitize(String query, SearchIntentResult intent) {
+		if (intent == null) {
+			return fallback(query);
 		}
-		return String.join(" ", aliases.stream().distinct().toList());
+
+		String canonical = normalizeSearchText(intent.getCanonicalQuery());
+		if (canonical.isBlank()) {
+			canonical = normalizeSearchText(query);
+		}
+
+		List<String> expandedTerms = normalizeTerms(intent.getExpandedTerms(), 12);
+		List<String> suggestions = normalizeTerms(intent.getSuggestions(), 4);
+		return new SearchIntentResult(canonical, expandedTerms, suggestions);
 	}
 
-	public boolean productMatchesQueryIntent(String query, String productText) {
-		String normalizedProduct = normalizeSearchText(productText + " " + productAliases(productText));
-		return expandedTerms(query).stream()
-				.map(this::normalizeSearchText)
-				.anyMatch(term -> phrasePresent(normalizedProduct, term));
+	public boolean productMatchesIntent(SearchIntentResult intent, String productText) {
+		if (intent == null) {
+			return false;
+		}
+		String normalizedProduct = normalizeSearchText(productText);
+		if (normalizedProduct.isBlank()) {
+			return false;
+		}
+
+		Set<String> phrases = new LinkedHashSet<>();
+		phrases.add(normalizeSearchText(intent.getCanonicalQuery()));
+		for (String term : intent.getExpandedTerms()) {
+			phrases.add(normalizeSearchText(term));
+		}
+		return phrases.stream()
+				.filter(phrase -> !phrase.isBlank())
+				.anyMatch(phrase -> phrasePresent(normalizedProduct, phrase));
 	}
 
-	private List<String> expandedTerms(String query) {
-		String original = query == null ? "" : query.trim();
-		String normalized = normalizeSearchText(original);
-		List<String> terms = new ArrayList<>();
-		if (!original.isBlank()) {
-			terms.add(original);
-		}
-		if (!normalized.isBlank() && !normalized.equalsIgnoreCase(original)) {
-			terms.add(normalized);
-		}
-		for (Map.Entry<String, List<String>> entry : SEARCH_INTENTS.entrySet()) {
-			String key = normalizeSearchText(entry.getKey());
-			if (normalized.equals(key) || normalized.contains(key) || key.startsWith(normalized)) {
-				terms.addAll(entry.getValue());
-			}
-		}
-		return terms.stream()
-				.filter(term -> term != null && !term.isBlank())
-				.distinct()
-				.toList();
+	public boolean productMatchesExpandedQuery(String expandedQuery, String productText) {
+		SearchIntentResult intent = new SearchIntentResult(
+				expandedQuery,
+				Arrays.stream(normalizeSearchText(expandedQuery).split(" "))
+						.filter(term -> !term.isBlank())
+						.toList(),
+				List.of()
+		);
+		return productMatchesIntent(intent, productText);
 	}
 
-	private String normalizeSearchText(String value) {
+	public String normalizeSearchText(String value) {
 		return value == null ? "" : value.toLowerCase(Locale.ROOT)
 				.replace('-', ' ')
 				.replace('_', ' ')
+				.replaceAll("[^a-z0-9 ]", " ")
 				.replaceAll("\\s+", " ")
 				.trim();
 	}
 
-	private boolean phrasePresent(String text, String phrase) {
-		String normalizedText = normalizeSearchText(text);
-		String normalizedPhrase = normalizeSearchText(phrase);
-		if (normalizedText.isBlank() || normalizedPhrase.isBlank()) {
-			return false;
+	private List<String> normalizeTerms(List<String> terms, int limit) {
+		if (terms == null) {
+			return List.of();
 		}
-		List<String> textTokens = List.of(normalizedText.split(" "));
-		List<String> phraseTokens = List.of(normalizedPhrase.split(" "));
+		return terms.stream()
+				.map(this::normalizeSearchText)
+				.filter(term -> !term.isBlank())
+				.distinct()
+				.limit(limit)
+				.collect(Collectors.toList());
+	}
+
+	private boolean phrasePresent(String text, String phrase) {
+		List<String> textTokens = List.of(text.split(" "));
+		List<String> phraseTokens = List.of(phrase.split(" "));
 		if (phraseTokens.size() > textTokens.size()) {
 			return false;
 		}
@@ -120,36 +96,5 @@ public class SearchIntentCatalog {
 			}
 		}
 		return false;
-	}
-
-	private static Map<String, List<String>> searchIntents() {
-		Map<String, List<String>> intents = new LinkedHashMap<>();
-		intents.put("lap", List.of("laptop", "notebook", "ultrabook", "macbook", "gaming laptop"));
-		intents.put("laptop", List.of("notebook", "ultrabook", "macbook", "dell xps", "hp spectre", "thinkpad", "surface pro", "gaming laptop"));
-		intents.put("notebook", List.of("laptop", "macbook", "dell xps", "hp spectre", "surface pro"));
-		intents.put("computer", List.of("laptop", "macbook", "surface pro", "dell xps", "hp spectre"));
-		intents.put("mobile charger", List.of("phone charger", "usb-c charger", "fast charger", "wireless charger", "power bank", "charging stand", "belkin boostcharge", "anker power bank"));
-		intents.put("phone charger", List.of("mobile charger", "usb-c charger", "fast charger", "wireless charger", "power bank", "charging stand"));
-		intents.put("charger", List.of("mobile charger", "phone charger", "usb-c charger", "fast charger", "wireless charger", "power bank", "charging stand", "adapter"));
-		intents.put("type c", List.of("usb-c charger", "type-c charger", "phone charger", "fast charger", "charging cable", "power adapter", "power bank"));
-		intents.put("type-c", List.of("usb-c charger", "type-c charger", "phone charger", "fast charger", "charging cable", "power adapter", "power bank"));
-		intents.put("usb c", List.of("usb-c charger", "type-c charger", "phone charger", "fast charger", "charging cable", "power adapter", "power bank"));
-		intents.put("usb-c", List.of("usb-c charger", "type-c charger", "phone charger", "fast charger", "charging cable", "power adapter", "power bank"));
-		intents.put("mobile", List.of("phone", "smartphone", "iphone", "galaxy", "pixel", "oneplus", "motorola", "nokia", "xperia", "redmi"));
-		intents.put("phone", List.of("mobile", "smartphone", "iphone", "galaxy", "pixel", "oneplus", "motorola", "nokia", "xperia", "redmi"));
-		intents.put("smartphone", List.of("phone", "mobile", "iphone", "galaxy", "pixel", "oneplus"));
-		intents.put("tablet", List.of("ipad", "tab", "fire hd", "surface pro"));
-		intents.put("earphone", List.of("earbuds", "airpods", "galaxy buds", "headphones"));
-		intents.put("headset", List.of("headphones", "earbuds", "airpods", "noise cancelling"));
-		intents.put("shoe", List.of("shoes for men", "shoes for running", "running shoe", "sneaker", "trainer", "runner", "footwear"));
-		intents.put("shoes", List.of("shoes for men", "shoes for running", "running shoe", "sneaker", "trainer", "runner", "footwear"));
-		intents.put("running shoe", List.of("shoe", "shoes for running", "runner", "sneaker", "trainer", "footwear"));
-		intents.put("sneaker", List.of("shoe", "shoes", "running shoe", "trainer", "runner", "footwear"));
-		intents.put("trainer", List.of("shoe", "shoes", "sneaker", "running shoe", "runner", "footwear"));
-		intents.put("runner", List.of("shoe", "shoes", "running shoe", "shoes for running", "sneaker", "trainer", "footwear"));
-		intents.put("footwear", List.of("shoe", "shoes", "sneaker", "trainer", "running shoe", "runner"));
-		intents.put("wifi", List.of("router", "mesh router", "wi-fi 6", "networking"));
-		intents.put("watch", List.of("smartwatch", "fitness tracker", "apple watch", "galaxy watch", "garmin", "fitbit"));
-		return Collections.unmodifiableMap(intents);
 	}
 }
